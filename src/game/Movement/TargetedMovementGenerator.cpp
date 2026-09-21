@@ -297,6 +297,8 @@ bool ChaseMovementGenerator<T>::Update(T &owner, uint32 const&  time_diff)
     }
 
     bool interrupted = false;
+    bool const deferBotCombatReplan = owner.IsPlayer() && owner.ToPlayer()->IsBot() &&
+                                      owner.IsInCombat() && !owner.movespline->Finalized();
     m_checkDistanceTimer.Update(time_diff);
     if (m_checkDistanceTimer.Passed())
     {
@@ -343,7 +345,8 @@ bool ChaseMovementGenerator<T>::Update(T &owner, uint32 const&  time_diff)
                 if (targetMoved)
                 {
                     m_bRecalculateTravel = true;
-                    owner.GetMotionMaster()->SetNeedAsyncUpdate();
+                    if (!deferBotCombatReplan)
+                        owner.GetMotionMaster()->SetNeedAsyncUpdate();
                 }
                 else
                 {
@@ -410,7 +413,8 @@ bool ChaseMovementGenerator<T>::Update(T &owner, uint32 const&  time_diff)
     else if (m_bRecalculateTravel)
     {
         m_leashExtensionTimer.Reset(5000);
-        owner.GetMotionMaster()->SetNeedAsyncUpdate();
+        if (!deferBotCombatReplan)
+            owner.GetMotionMaster()->SetNeedAsyncUpdate();
     }
 
     return true;
