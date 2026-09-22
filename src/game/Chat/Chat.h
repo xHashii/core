@@ -102,6 +102,7 @@ class BattleBotAI;
 
 class ChatHandler
 {
+    friend class WorldSession;
     friend class CombatBotBaseAI;
     friend class PartyBotAI;
     friend class BattleBotAI;

@@ -1623,6 +1623,174 @@ bool GossipSelect_BountyBoard(Player* player, Creature* creature, uint32 sender,
     return true;
 }
 
+static void ShowBountyBoardMainMenuGO(Player* player, GameObject* go)
+{
+    player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, "View Active Realm Bounties (Top Wanted)", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_VIEW_LIST);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_MONEY_BAG, "Place a Bounty on a Player or Bot", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_MENU);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Check My Active Bounty & PvP Streak", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Bounty System & World PvP Information", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Farewell. (Close)", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CLOSE);
+
+    player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, go->GetGUID());
+}
+
+bool GOGossipHello_BountyBoard(Player* player, GameObject* go)
+{
+    if (!player || !go)
+        return false;
+
+    ShowBountyBoardMainMenuGO(player, go);
+    return true;
+}
+
+bool GOGossipSelect_BountyBoard(Player* player, GameObject* go, uint32 sender, uint32 action)
+{
+    if (!player || !go)
+        return false;
+
+    if (sender != GOSSIP_SENDER_MAIN)
+        return true;
+
+    switch (action)
+    {
+        case BOUNTY_ACTION_MAIN:
+        {
+            ShowBountyBoardMainMenuGO(player, go);
+            break;
+        }
+
+        case BOUNTY_ACTION_VIEW_LIST:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            auto topBounties = sBountyMgr.GetTopBounties(10);
+            if (topBounties.empty())
+            {
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "No active bounties on the realm! Slay enemies in PvP or place one.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            }
+            else
+            {
+                uint32 rank = 1;
+                for (const auto& entry : topBounties)
+                {
+                    std::ostringstream ss;
+                    ss << "#" << rank++ << ": " << entry.name << " (Lvl " << entry.level << ") - "
+                       << entry.bountyGold << " Gold | Streak: " << entry.killstreak << " | " << entry.zoneName;
+                    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, ss.str().c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_VIEW_LIST);
+                }
+            }
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, go->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_PLACE_MENU:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            Player* target = sObjectMgr.GetPlayer(player->GetSelectionGuid());
+            if (target && target != player)
+            {
+                std::string targetName = target->GetName();
+                std::string title = "Target: " + targetName + " (Level " + std::to_string(target->GetLevel()) + ")";
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, title.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_MENU);
+
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 5 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_5G, "Place 5 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 10 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_10G, "Place 10 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 25 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_25G, "Place 25 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 50 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_50G, "Place 50 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 100 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_100G, "Place 100 Gold bounty on " + targetName + "?", false);
+            }
+            else
+            {
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Select/Target a player or bot first to place a bounty via menu.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Or use chat command: .bounty add <target_name> <gold>", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            }
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, go->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_PLACE_5G:
+        case BOUNTY_ACTION_PLACE_10G:
+        case BOUNTY_ACTION_PLACE_25G:
+        case BOUNTY_ACTION_PLACE_50G:
+        case BOUNTY_ACTION_PLACE_100G:
+        {
+            uint32 gold = 5;
+            if (action == BOUNTY_ACTION_PLACE_10G) gold = 10;
+            else if (action == BOUNTY_ACTION_PLACE_25G) gold = 25;
+            else if (action == BOUNTY_ACTION_PLACE_50G) gold = 50;
+            else if (action == BOUNTY_ACTION_PLACE_100G) gold = 100;
+
+            Player* target = sObjectMgr.GetPlayer(player->GetSelectionGuid());
+            if (!target)
+            {
+                player->GetSession()->SendNotification("Target player or bot not found. Select a target first!");
+                ShowBountyBoardMainMenuGO(player, go);
+                return true;
+            }
+
+            if (sBountyMgr.AddBounty(player, target, gold))
+            {
+                player->GetSession()->SendNotification("Bounty placed successfully!");
+                player->CLOSE_GOSSIP_MENU();
+            }
+            else
+            {
+                ShowBountyBoardMainMenuGO(player, go);
+            }
+            break;
+        }
+
+        case BOUNTY_ACTION_CHECK_SELF:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            uint32 bounty = sBountyMgr.GetBountyAmount(player->GetObjectGuid());
+            uint32 streak = sBountyMgr.GetKillstreak(player->GetObjectGuid());
+            uint32 makgoraWins = player->GetMakgoraWins();
+
+            std::string bStr = "Your Active Head Bounty: " + std::to_string(bounty) + " Gold";
+            std::string kStr = "Current PvP Killstreak: " + std::to_string(streak) + " Kills";
+            std::string mStr = "Total Mak'gora Victories: " + std::to_string(makgoraWins);
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_MONEY_BAG, bStr.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, kStr.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, mStr.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, go->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_RULES_INFO:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[Killstreaks]: 3 kills (5g), 5 kills (15g), 10 kills (50g), 20 kills (100g).", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[Claiming]: Slay any wanted target in PvP or Mak'gora to claim the gold reward.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[World PvP Hotspots]: Hillsbrad, Ashenvale, Stonetalon, Stranglethorn, Arathi & Tanaris.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[Mak'gora]: Duel to the Death! Challenge via right-click addon, emote, or whisper.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, go->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_CLOSE:
+        {
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+    }
+    return true;
+}
+
 void AddSC_custom_creatures()
 {
     Script* newscript;
@@ -1631,6 +1799,14 @@ void AddSC_custom_creatures()
     newscript->Name = "custom_bounty_board";
     newscript->pGossipHello = &GossipHello_BountyBoard;
     newscript->pGossipSelect = &GossipSelect_BountyBoard;
+    newscript->pGOGossipHello = &GOGossipHello_BountyBoard;
+    newscript->pGOGossipSelect = &GOGossipSelect_BountyBoard;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "go_wanted_board";
+    newscript->pGOGossipHello = &GOGossipHello_BountyBoard;
+    newscript->pGOGossipSelect = &GOGossipSelect_BountyBoard;
     newscript->RegisterSelf(false);
 
     newscript = new Script;

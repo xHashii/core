@@ -801,6 +801,24 @@ void WorldSession::HandleTextEmoteOpcode(WorldPackets::Misc::TextEmote const& pa
     //Send scripted event call
     if (unit && unit->IsCreature() && ((Creature*)unit)->AI())
         ((Creature*)unit)->AI()->ReceiveEmote(GetPlayer(), packet.textEmote);
+
+    // Mak'gora challenge emote trigger (/threaten or /taunt)
+    if (unit && unit->IsPlayer() && unit != GetPlayer())
+    {
+        if (packet.textEmote == TEXTEMOTE_THREATEN || packet.textEmote == TEXTEMOTE_TAUNT)
+        {
+            Player* targetPlayer = unit->ToPlayer();
+            if (GetPlayer()->IsAlive() && !GetPlayer()->IsInCombat() && !GetPlayer()->m_duel &&
+                targetPlayer->IsAlive() && !targetPlayer->IsInCombat() && !targetPlayer->m_duel &&
+                GetPlayer()->IsWithinDistInMap(targetPlayer, 30.0f))
+            {
+                if (GetPlayer()->HasPendingMakgoraChallenge(targetPlayer->GetObjectGuid()))
+                    ChatHandler(GetPlayer()).HandleMakgoraAcceptCommand(const_cast<char*>(targetPlayer->GetName()));
+                else
+                    ChatHandler(GetPlayer()).HandleMakgoraChallengeCommand(const_cast<char*>(targetPlayer->GetName()));
+            }
+        }
+    }
 }
 
 void WorldSession::HandleChatIgnoredOpcode(WorldPackets::Misc::ChatIgnored const& packet)
