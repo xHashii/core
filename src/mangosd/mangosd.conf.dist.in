@@ -3426,4 +3426,36 @@ Hardcore.DisableBattlegrounds = 1
 Hardcore.PaladinRestriction = 1
 Hardcore.DeathAnnouncement = 1
 
+###################################################################################################################
+# BOUNTY SYSTEM
+#
+#    Bounty.Announce.Mode
+#        Which bounty events (PvP killstreak milestones, bounties placed, bounties claimed) are
+#        broadcast to the whole realm as a System message. Bots fight each other constantly, so
+#        broadcasting every event floods the chat on realms with many bots. Real players that are
+#        involved in an event always get a private message when it is not broadcast.
+#        0 - Never broadcast bounty events
+#        1 - Only broadcast events involving at least one real (non-bot) player
+#        2 - Broadcast every event, including bot-vs-bot (legacy behaviour)
+#        Default: 1
+#
+#    Bounty.Announce.Cooldown
+#        Minimum time in seconds between two realm-wide bounty event broadcasts. Broadcasts that
+#        would fall inside the cooldown are dropped (involved real players are notified privately).
+#        Default: 60
+#                 0 - No cooldown
+#
+#    Bounty.Announce.DigestInterval
+#        Interval in minutes for a single-line "Most wanted" summary listing the three highest
+#        active bounties on the realm. This is the quiet way to advertise bounties (including
+#        bounties on bots) without per-kill spam. Independent of Bounty.Announce.Mode.
+#        Default: 15
+#                 0 - Disabled
+#
+###################################################################################################################
+
+Bounty.Announce.Mode = 1
+Bounty.Announce.Cooldown = 60
+Bounty.Announce.DigestInterval = 15
+
 

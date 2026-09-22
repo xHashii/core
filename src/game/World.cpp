@@ -66,6 +66,7 @@
 #include "CharacterDatabaseCleaner.h"
 #include "LFGMgr.h"
 #include "AutoBroadCastMgr.h"
+#include "BountyMgr.h"
 #include "AuctionHouseBotMgr.h"
 #include "AuctionHouseBot/AuctionHouseBot.h"
 #include "Transports/TransportMgr.h"
@@ -1278,6 +1279,11 @@ void World::LoadConfigSettings(bool reload)
     setConfig(CONFIG_BOOL_HARDCORE_PALADIN_RESTRICTION, "Hardcore.PaladinRestriction", true);
     setConfig(CONFIG_BOOL_HARDCORE_DEATH_ANNOUNCEMENT, "Hardcore.DeathAnnouncement", true);
 
+    // Bounty System
+    setConfigMinMax(CONFIG_UINT32_BOUNTY_ANNOUNCE_MODE, "Bounty.Announce.Mode", BOUNTY_ANNOUNCE_REAL_PLAYERS, BOUNTY_ANNOUNCE_NONE, BOUNTY_ANNOUNCE_ALL);
+    setConfig(CONFIG_UINT32_BOUNTY_ANNOUNCE_COOLDOWN, "Bounty.Announce.Cooldown", 60);
+    setConfig(CONFIG_UINT32_BOUNTY_ANNOUNCE_DIGEST_INTERVAL, "Bounty.Announce.DigestInterval", 15);
+
     // Smartlog data
     sLog.InitSmartlogEntries(sConfig.GetStringDefault("Smartlog.ExtraEntries", ""));
     sLog.InitSmartlogGuids(sConfig.GetStringDefault("Smartlog.ExtraGuids", ""));
@@ -2236,6 +2242,8 @@ void World::Update(uint32 diff)
     sRandomPlayerbotMgr.UpdateSessions(diff);
     // Update AutoBroadcast
     sAutoBroadCastMgr.Update(diff);
+    // Periodic "most wanted" bounty digest
+    sBountyMgr.Update(diff);
     // Update ban list if necessary
     sAccountMgr.Update(diff);
 
