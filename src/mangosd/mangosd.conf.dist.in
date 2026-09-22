@@ -3361,3 +3361,57 @@ DynamicRespawn.AffectLevelBelow = 0
 DynamicRespawn.PlayersThreshold = 0
 DynamicRespawn.PlayersMaxLevelDiff = 0
 
+###################################################################################################################
+# HARDCORE MODE
+#
+#    Hardcore.Enable
+#        Enable Vanilla Hardcore system and features (Hardcore NPC, rules, safeguards, commands).
+#        Default: 1 - Enabled
+#                 0 - Disabled
+#
+#    Hardcore.Mode
+#        Hardcore participation mode:
+#        0 - Opt-In (Default): Players choose whether to activate Hardcore and Solo Self-Found (SSF)
+#            modes through the Hardcore NPC, Gossip dialogs, or in-game commands. Softcore players
+#            and bots play normally.
+#        1 - Realm-wide Hardcore: All player characters start as Hardcore by default.
+#        Default: 0 (Opt-In)
+#
+#    Hardcore.AllowReviveAtSpiritHealer
+#        Allow fallen Hardcore characters to forfeit Hardcore mode at a Spirit Healer or Hardcore NPC
+#        and resurrect as a normal (softcore) character to continue playing.
+#        Default: 1 - Enabled (Fallen heroes can forfeit Hardcore to revive as normal characters)
+#                 0 - Disabled (Strict permanent death lock: cannot forfeit to resurrect)
+#
+#    Hardcore.DebuffLimitRemoved
+#        Remove the 16-debuff and 32-buff limits on Hardcore characters.
+#        Default: 1 - Enabled
+#                 0 - Disabled
+#
+#    Hardcore.DisableBattlegrounds
+#        Disable normal battlegrounds on Hardcore realm to prevent griefing/accidental deaths.
+#        Default: 1 - Enabled
+#                 0 - Disabled
+#
+#    Hardcore.PaladinRestriction
+#        Prevent Paladins from using Hearthstones while protected by Divine Shield,
+#        Divine Protection, or Blessing of Protection.
+#        Default: 1 - Enabled
+#                 0 - Disabled
+#
+#    Hardcore.DeathAnnouncement
+#        Broadcast a server-wide announcement when a Hardcore character dies.
+#        Default: 1 - Enabled
+#                 0 - Disabled
+#
+###################################################################################################################
+
+Hardcore.Enable = 1
+Hardcore.Mode = 0
+Hardcore.AllowReviveAtSpiritHealer = 1
+Hardcore.DebuffLimitRemoved = 1
+Hardcore.DisableBattlegrounds = 1
+Hardcore.PaladinRestriction = 1
+Hardcore.DeathAnnouncement = 1
+
+

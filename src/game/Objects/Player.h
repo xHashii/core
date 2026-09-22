@@ -242,6 +242,7 @@ struct DuelInfo
     time_t outOfBound = 0;
     uint32 transportGuid = 0;
     bool finished = false;
+    bool isMakgora = false;
 };
 
 struct Areas
@@ -2143,6 +2144,14 @@ class Player final: public Unit
         void SetAcceptWhispers(bool on) { if (on) m_ExtraFlags |= PLAYER_EXTRA_ACCEPT_WHISPERS; else m_ExtraFlags &= ~PLAYER_EXTRA_ACCEPT_WHISPERS; }
         uint32 GetExtraFlags() const { return m_ExtraFlags; }
 
+        // Hardcore Mode
+        bool IsHardcore() const;
+        void SetHardcore(bool on);
+        bool IsHardcoreDead() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_DEAD) != 0; }
+        void SetHardcoreDead(bool on);
+        bool IsHardcoreSSF() const { return IsHardcore() && (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_SSF) != 0; }
+        void SetHardcoreSSF(bool on);
+
         bool ToggleAFK();
         bool ToggleDND();
         bool IsAFK() const { return HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_AFK); }
@@ -2218,6 +2227,14 @@ class Player final: public Unit
         // todo: -maybe move UpdateDuelFlag+DuelComplete to independent DuelHandler.
         DuelInfo* m_duel;
         bool IsInDuelWith(Player const* player) const { return m_duel && m_duel->opponent == player && m_duel->startTime != 0; }
+        bool IsMakgora() const { return m_duel && m_duel->isMakgora; }
+        void SetMakgora(bool on) { if (m_duel) m_duel->isMakgora = on; }
+        uint32 GetMakgoraWins() const { return m_makgoraWins; }
+        void SetMakgoraWins(uint32 wins) { m_makgoraWins = wins; }
+        void AddMakgoraWin(Player* victim);
+        ObjectGuid GetMakgoraChallenger() const { return m_makgoraChallengerGuid; }
+        void SetMakgoraChallenger(ObjectGuid guid) { m_makgoraChallengerGuid = guid; m_makgoraChallengeTime = time(nullptr); }
+        bool HasPendingMakgoraChallenge(ObjectGuid from) const { return m_makgoraChallengerGuid == from && (time(nullptr) - m_makgoraChallengeTime) < 60; }
         void UpdateDuelFlag(time_t currTime);
         void CheckDuelDistance(time_t currTime);
         void DuelComplete(DuelCompleteType type);
@@ -2515,6 +2532,10 @@ class Player final: public Unit
         PlayerbotMgr* m_playerbotMgr = nullptr;
 
         mutable std::recursive_mutex m_playerbotAIMutex;
+
+        uint32 m_makgoraWins = 0;
+        ObjectGuid m_makgoraChallengerGuid;
+        time_t m_makgoraChallengeTime = 0;
 };
 
 inline Player* Object::ToPlayer()

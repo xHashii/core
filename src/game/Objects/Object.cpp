@@ -3817,6 +3817,9 @@ bool WorldObject::IsValidAttackTarget(Unit const* target, bool checkAlive) const
         if (playerAffectingAttacker->m_duel && playerAffectingAttacker->m_duel->opponent == playerAffectingTarget && playerAffectingAttacker->m_duel->startTime != 0)
             return true;
 
+        if (playerAffectingAttacker->IsHardcore() && !playerAffectingAttacker->IsPvP())
+            return false;
+
         if (playerAffectingTarget->IsPvP())
             return true;
 
@@ -3860,6 +3863,10 @@ bool WorldObject::IsValidHelpfulTarget(Unit const* target, bool checkAlive) cons
         // pet and owner
         if (playerAffectingCaster == playerAffectingTarget)
             return true;
+
+        // In Hardcore mode, unflagged players cannot assist/buff PvP-flagged players
+        if (playerAffectingCaster->IsHardcore() && !playerAffectingCaster->IsPvP() && playerAffectingTarget->IsPvP())
+            return false;
 
         // cannot help others in duels
         if (playerAffectingTarget->m_duel && playerAffectingTarget->m_duel->startTime != 0)

@@ -5305,6 +5305,41 @@ SpellCastResult Spell::CheckCast(bool strict)
     if (m_caster->IsPlayer() && m_caster->ToPlayer()->HasCheatOption(PLAYER_CHEAT_NO_CHECK_CAST))
         return SPELL_CAST_OK;
 
+    // Hardcore Paladin restriction: cannot use Hearthstone while protected by Blessing of Protection, Divine Protection, or Divine Shield
+    if (m_spellInfo->Id == 8690)
+    {
+        if (Player* player = m_caster->ToPlayer())
+        {
+            if (player->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_PALADIN_RESTRICTION))
+            {
+                if (player->HasAura(1022) || player->HasAura(5599) || player->HasAura(10278) || // Blessing of Protection (Ranks 1-3)
+                    player->HasAura(498) || player->HasAura(5573) ||                             // Divine Protection (Ranks 1-2)
+                    player->HasAura(642) || player->HasAura(1020))                              // Divine Shield (Ranks 1-2)
+                {
+                    return SPELL_FAILED_DAMAGE_IMMUNE;
+                }
+            }
+        }
+    }
+
+    // Hardcore Paladin restriction: cannot cast bubble while casting Hearthstone
+    if (m_spellInfo->Id == 1022 || m_spellInfo->Id == 5599 || m_spellInfo->Id == 10278 ||
+        m_spellInfo->Id == 498 || m_spellInfo->Id == 5573 ||
+        m_spellInfo->Id == 642 || m_spellInfo->Id == 1020)
+    {
+        if (Player* player = m_caster->ToPlayer())
+        {
+            if (player->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_PALADIN_RESTRICTION))
+            {
+                if (Spell* currentSpell = player->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+                {
+                    if (currentSpell->m_spellInfo && currentSpell->m_spellInfo->Id == 8690)
+                        return SPELL_FAILED_SPELL_IN_PROGRESS;
+                }
+            }
+        }
+    }
+
     // Prevent casting while sitting unless the spell allows it
     if (!m_IsTriggeredSpell && m_casterUnit && !m_casterUnit->IsStandingUp() && !(m_spellInfo->Attributes & SPELL_ATTR_ALLOW_WHILE_SITTING))
         return SPELL_FAILED_NOT_STANDING;
@@ -5792,8 +5827,21 @@ SpellCastResult Spell::CheckCast(bool strict)
                     if (!corpse)
                         return SPELL_FAILED_BAD_TARGETS;
 
+                    if (Player* owner = ObjectAccessor::FindPlayer(corpse->GetOwnerGuid()))
+                    {
+                        if (owner->IsHardcore() && owner->IsHardcoreDead())
+                            return SPELL_FAILED_BAD_TARGETS;
+                    }
+
                     if (!m_spellInfo->HasAttribute(SPELL_ATTR_EX2_IGNORE_LINE_OF_SIGHT) && !corpse->IsWithinLOSInMap(m_caster))
                         return SPELL_FAILED_LINE_OF_SIGHT;
+                }
+
+                if (m_targets.getUnitTarget() && m_targets.getUnitTarget()->GetTypeId() == TYPEID_PLAYER)
+                {
+                    Player* targetPlayer = m_targets.getUnitTarget()->ToPlayer();
+                    if (targetPlayer && targetPlayer->IsHardcore() && targetPlayer->IsHardcoreDead())
+                        return SPELL_FAILED_BAD_TARGETS;
                 }
                 break;
             }

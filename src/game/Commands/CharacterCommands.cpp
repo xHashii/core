@@ -14,6 +14,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdarg>
 #include "Common.h"
 #include "Database/DatabaseEnv.h"
 #include "Database/DatabaseImpl.h"
@@ -34,6 +35,8 @@
 #include "PlayerDump.h"
 #include "CharacterDatabaseCache.h"
 #include "Config/Config.h"
+#include "BountyMgr.h"
+#include "playerbot/PlayerbotAI.h"
 
 #include <regex>
 #include <iterator>
@@ -5876,5 +5879,479 @@ bool ChatHandler::HandleListVisibleGuidsCommand(char* args)
     for (auto const& guid : pPlayer->m_visibleGUIDs)
         PSendSysMessage("- %s", guid.GetString().c_str());
 
+    return true;
+}
+
+bool ChatHandler::HandleHardcoreCommand(char* args)
+{
+    return HandleHardcoreStatusCommand(args);
+}
+
+bool ChatHandler::HandleHardcoreStatusCommand(char* /*args*/)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    PSendSysMessage("=== Hardcore Mode Status ===");
+    PSendSysMessage("Hardcore: %s%s", player->IsHardcore() ? "|cff00ff00ENABLED|r" : "|cffff0000DISABLED|r",
+                    sWorld.getConfig(CONFIG_BOOL_HARDCORE_ENABLE) ? " (Realm-wide)" : "");
+    if (player->IsHardcore())
+    {
+        PSendSysMessage("Status: %s", player->IsHardcoreDead() ? "|cffff0000FALLEN (Ghost)|r" : "|cff00ff00ALIVE|r");
+        PSendSysMessage("Solo Self-Found (SSF): %s", player->IsHardcoreSSF() ? "|cff00ff00ACTIVE|r" : "|cffff0000INACTIVE|r");
+    }
+    return true;
+}
+
+bool ChatHandler::HandleHardcoreSSFCommand(char* args)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    if (!player->IsHardcore())
+    {
+        PSendSysMessage("Solo Self-Found (SSF) mode requires Hardcore mode to be active.");
+        return true;
+    }
+
+    if (player->IsHardcoreDead())
+    {
+        PSendSysMessage("Dead characters cannot change SSF mode.");
+        return true;
+    }
+
+    char* arg = ExtractOptNotLastArg(&args);
+    std::string opt = arg ? arg : "";
+
+    if (opt == "off" || opt == "disable")
+    {
+        if (!player->IsHardcoreSSF())
+        {
+            PSendSysMessage("Solo Self-Found mode is not currently active.");
+            return true;
+        }
+
+        player->SetHardcoreSSF(false);
+        PSendSysMessage("Solo Self-Found mode has been |cffff0000DISABLED|r. You cannot re-enable it on this character.");
+        return true;
+    }
+    else if (opt == "on" || opt == "enable" || opt.empty())
+    {
+        if (player->IsHardcoreSSF())
+        {
+            PSendSysMessage("Solo Self-Found mode is already |cff00ff00ACTIVE|r on this character.");
+            return true;
+        }
+
+        if (player->GetLevel() > 1)
+        {
+            PSendSysMessage("Solo Self-Found mode can only be enabled at level 1.");
+            return true;
+        }
+
+        player->SetHardcoreSSF(true);
+        PSendSysMessage("Solo Self-Found mode is now |cff00ff00ENABLED|r! Trading, Auction House, and Mailbox are disabled.");
+        return true;
+    }
+    else
+    {
+        PSendSysMessage("Syntax: .hardcore ssf [on|off]");
+        return true;
+    }
+}
+
+bool ChatHandler::HandleHardcoreEnableCommand(char* args)
+{
+    Player* target;
+    ObjectGuid target_guid;
+    if (!ExtractPlayerTarget(&args, &target, &target_guid))
+        return false;
+
+    if (!target)
+    {
+        PSendSysMessage("Target player must be online.");
+        return true;
+    }
+
+    target->SetHardcore(true);
+    PSendSysMessage("Hardcore mode ENABLED for %s.", playerLink(target->GetName()).c_str());
+    target->PSendSysMessage("Hardcore mode has been enabled for your character by a Game Master.");
+    return true;
+}
+
+bool ChatHandler::HandleHardcoreDisableCommand(char* args)
+{
+    Player* target;
+    ObjectGuid target_guid;
+    if (!ExtractPlayerTarget(&args, &target, &target_guid))
+        return false;
+
+    if (!target)
+    {
+        PSendSysMessage("Target player must be online.");
+        return true;
+    }
+
+    target->SetHardcore(false);
+    target->SetHardcoreSSF(false);
+    target->SetHardcoreDead(false);
+    PSendSysMessage("Hardcore mode DISABLED for %s.", playerLink(target->GetName()).c_str());
+    target->PSendSysMessage("Hardcore mode has been disabled for your character by a Game Master.");
+    return true;
+}
+
+bool ChatHandler::HandleHardcoreReviveCommand(char* args)
+{
+    Player* target;
+    ObjectGuid target_guid;
+    if (!ExtractPlayerTarget(&args, &target, &target_guid))
+        return false;
+
+    if (target)
+    {
+        target->SetHardcoreDead(false);
+        target->ResurrectPlayer(1.0f);
+        target->SpawnCorpseBones();
+        PSendSysMessage("Hardcore player %s revived successfully.", playerLink(target->GetName()).c_str());
+        target->PSendSysMessage("You have been revived by a Game Master.");
+    }
+    else
+    {
+        sObjectAccessor.ConvertCorpseForPlayer(target_guid);
+        CharacterDatabase.PExecute("UPDATE `characters` SET `extra_flags` = `extra_flags` & ~0x1000 WHERE `guid` = %u", target_guid.GetCounter());
+        std::string playername;
+        sObjectMgr.GetPlayerNameByGUID(target_guid, playername);
+        PSendSysMessage("Offline hardcore player %s revived.", playerLink(playername).c_str());
+    }
+    return true;
+}
+
+bool ChatHandler::HandleMakgoraCommand(char* args)
+{
+    if (args && *args)
+        return HandleMakgoraChallengeCommand(args);
+
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    PSendSysMessage("=== |cffff0000Mak'gora (Duel to the Death)|r ===");
+    PSendSysMessage(".makgora challenge <player> - Challenge a player/bot to Mak'gora");
+    PSendSysMessage(".makgora accept <player>    - Accept a pending Mak'gora challenge");
+    PSendSysMessage(".makgora decline            - Decline a pending Mak'gora challenge");
+    PSendSysMessage(".makgora status             - View your Mak'gora record");
+    PSendSysMessage("Your Mak'gora Victories: %u", player->GetMakgoraWins());
+    return true;
+}
+
+bool ChatHandler::HandleMakgoraChallengeCommand(char* args)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    if (!player->IsAlive())
+    {
+        PSendSysMessage("You cannot challenge anyone to Mak'gora while dead.");
+        return true;
+    }
+
+    if (player->IsInCombat())
+    {
+        PSendSysMessage("You cannot challenge anyone to Mak'gora while in combat.");
+        return true;
+    }
+
+    if (player->m_duel)
+    {
+        PSendSysMessage("You are already engaged in a duel.");
+        return true;
+    }
+
+    Player* target = nullptr;
+    ObjectGuid target_guid;
+    if (!ExtractPlayerTarget(&args, &target, &target_guid))
+    {
+        target = GetSelectedPlayer();
+        if (!target)
+        {
+            PSendSysMessage("Syntax: .makgora challenge <player_name> (or select a target)");
+            return true;
+        }
+    }
+
+    if (!target || !target->IsInWorld())
+    {
+        PSendSysMessage("Target player not found or offline.");
+        return true;
+    }
+
+    if (target == player)
+    {
+        PSendSysMessage("You cannot challenge yourself to a Mak'gora.");
+        return true;
+    }
+
+    if (!target->IsAlive())
+    {
+        PSendSysMessage("%s is dead.", target->GetName());
+        return true;
+    }
+
+    if (target->IsInCombat() || target->m_duel)
+    {
+        PSendSysMessage("%s is currently in combat or dueling.", target->GetName());
+        return true;
+    }
+
+    if (!player->IsWithinDistInMap(target, 30.0f))
+    {
+        PSendSysMessage("%s is too far away to challenge (must be within 30 yards).", target->GetName());
+        return true;
+    }
+
+    const auto* areaEntry = AreaEntry::GetById(player->GetAreaId());
+    if (areaEntry && !(areaEntry->Flags & AREA_FLAG_DUEL))
+    {
+        PSendSysMessage("Mak'gora duels are not permitted in this area.");
+        return true;
+    }
+
+    target->SetMakgoraChallenger(player->GetObjectGuid());
+    PSendSysMessage("|cffff0000[Mak'gora]|r You have challenged %s to a Mak'gora (Duel to the Death)!", target->GetName());
+    target->PSendSysMessage("|cffff0000[Mak'gora Challenge]|r %s has challenged you to a Mak'gora (Duel to the Death)!", player->GetName());
+    target->PSendSysMessage("|cffff0000[Mak'gora Challenge]|r Type |cffffd700.makgora accept %s|r to accept, or |cffffd700.makgora decline|r to decline.", player->GetName());
+
+    // Playerbot response
+    if (target->GetPlayerbotAI())
+    {
+        if (target->GetHealthPercent() >= 90)
+        {
+            std::string text = std::string("I accept your challenge to the death in Mak'gora, ") + player->GetName() + "! Lok'tar Ogar!";
+            target->Say(text.c_str(), LANG_UNIVERSAL);
+            player->CastSpell(target, 7266, true);
+            if (player->m_duel)
+                player->m_duel->isMakgora = true;
+            if (target->m_duel)
+                target->m_duel->isMakgora = true;
+
+            std::ostringstream ss;
+            ss << "|cffff0000[Mak'gora]|r " << player->GetName() << " and " << target->GetName() << " have entered a Mak'gora (Duel to the Death)!";
+            sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+        }
+        else
+        {
+            std::string text = std::string("I am not ready to fight a Mak'gora yet, ") + player->GetName() + "!";
+            target->Say(text.c_str(), LANG_UNIVERSAL);
+        }
+    }
+
+    return true;
+}
+
+bool ChatHandler::HandleMakgoraAcceptCommand(char* args)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    if (!player->IsAlive() || player->IsInCombat() || player->m_duel)
+    {
+        PSendSysMessage("You cannot accept a Mak'gora right now.");
+        return true;
+    }
+
+    Player* challenger = nullptr;
+    ObjectGuid challenger_guid;
+    if (ExtractPlayerTarget(&args, &challenger, &challenger_guid))
+    {
+        if (!challenger)
+            challenger = sObjectMgr.GetPlayer(challenger_guid);
+    }
+    else
+    {
+        ObjectGuid pendingGuid = player->GetMakgoraChallenger();
+        if (pendingGuid)
+            challenger = sObjectMgr.GetPlayer(pendingGuid);
+    }
+
+    if (!challenger || !challenger->IsInWorld())
+    {
+        PSendSysMessage("No valid Mak'gora challenger found.");
+        return true;
+    }
+
+    if (!player->HasPendingMakgoraChallenge(challenger->GetObjectGuid()) &&
+        !challenger->HasPendingMakgoraChallenge(player->GetObjectGuid()))
+    {
+        PSendSysMessage("You do not have an active Mak'gora challenge from %s.", challenger->GetName());
+        return true;
+    }
+
+    if (!challenger->IsAlive() || challenger->IsInCombat() || challenger->m_duel)
+    {
+        PSendSysMessage("%s is no longer ready for Mak'gora.", challenger->GetName());
+        return true;
+    }
+
+    if (!player->IsWithinDistInMap(challenger, 30.0f))
+    {
+        PSendSysMessage("%s is too far away (must be within 30 yards).", challenger->GetName());
+        return true;
+    }
+
+    const auto* areaEntry = AreaEntry::GetById(player->GetAreaId());
+    if (areaEntry && !(areaEntry->Flags & AREA_FLAG_DUEL))
+    {
+        PSendSysMessage("Mak'gora duels are not permitted in this area.");
+        return true;
+    }
+
+    // Initiate the duel
+    challenger->CastSpell(player, 7266, true);
+    if (challenger->m_duel)
+        challenger->m_duel->isMakgora = true;
+    if (player->m_duel)
+        player->m_duel->isMakgora = true;
+
+    std::ostringstream ss;
+    ss << "|cffff0000[Mak'gora]|r " << challenger->GetName() << " and " << player->GetName()
+       << " have entered a Mak'gora (Duel to the Death)! One will emerge victorious, the other shall perish!";
+    sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+
+    return true;
+}
+
+bool ChatHandler::HandleMakgoraDeclineCommand(char* /*args*/)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    ObjectGuid challengerGuid = player->GetMakgoraChallenger();
+    if (challengerGuid)
+    {
+        if (Player* challenger = sObjectMgr.GetPlayer(challengerGuid))
+        {
+            challenger->PSendSysMessage("|cffff0000[Mak'gora]|r %s has declined your challenge.", player->GetName());
+        }
+        player->SetMakgoraChallenger(ObjectGuid());
+    }
+
+    PSendSysMessage("You have declined the Mak'gora challenge.");
+    return true;
+}
+
+bool ChatHandler::HandleMakgoraStatusCommand(char* /*args*/)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    PSendSysMessage("=== |cffff0000Mak'gora Status|r ===");
+    PSendSysMessage("Mak'gora Victories: |cff00ff00%u|r", player->GetMakgoraWins());
+    PSendSysMessage("Hardcore Status: %s", player->IsHardcore() ? "|cffff0000Hardcore (Permanent Death)|r" : "|cff00ff00Normal|r");
+    return true;
+}
+
+bool ChatHandler::HandleBountyCommand(char* args)
+{
+    if (args && *args)
+    {
+        char* cmd = ExtractOptNotLastArg(&args);
+        std::string command = cmd ? cmd : "";
+        if (command == "add" || command == "place")
+            return HandleBountyAddCommand(args);
+        else if (command == "check")
+            return HandleBountyCheckCommand(args);
+        else if (command == "list")
+            return HandleBountyListCommand(args);
+    }
+    return HandleBountyListCommand(args);
+}
+
+bool ChatHandler::HandleBountyListCommand(char* /*args*/)
+{
+    auto bounties = sBountyMgr.GetTopBounties(15);
+
+    PSendSysMessage("=== |cffffd700Realm Bounty Board|r ===");
+    if (bounties.empty())
+    {
+        PSendSysMessage("No active bounties at this time. Slay players in PvP or use |cffffd700.bounty add <name> <gold>|r to place a bounty!");
+        return true;
+    }
+
+    uint32 rank = 1;
+    for (const auto& entry : bounties)
+    {
+        PSendSysMessage("#%u: |cffff2020%s|r (Level %u) - |cffffd700%u Gold|r | Streak: %u | Zone: %s",
+                        rank++, entry.name.c_str(), entry.level, entry.bountyGold, entry.killstreak, entry.zoneName.c_str());
+    }
+    return true;
+}
+
+bool ChatHandler::HandleBountyAddCommand(char* args)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    Player* target = nullptr;
+    ObjectGuid target_guid;
+    if (!ExtractPlayerTarget(&args, &target, &target_guid))
+    {
+        PSendSysMessage("Syntax: .bounty add <player_name> <gold_amount>");
+        return true;
+    }
+
+    if (!target)
+    {
+        PSendSysMessage("Target player must be online.");
+        return true;
+    }
+
+    char* goldStr = ExtractOptNotLastArg(&args);
+    if (!goldStr)
+    {
+        PSendSysMessage("Syntax: .bounty add <player_name> <gold_amount>");
+        return true;
+    }
+
+    uint32 gold = atoi(goldStr);
+    if (gold == 0)
+    {
+        PSendSysMessage("Bounty amount must be at least 1 Gold.");
+        return true;
+    }
+
+    sBountyMgr.AddBounty(player, target, gold);
+    return true;
+}
+
+bool ChatHandler::HandleBountyCheckCommand(char* args)
+{
+    Player* player = m_session ? m_session->GetPlayer() : nullptr;
+    if (!player)
+        return false;
+
+    Player* target = nullptr;
+    ObjectGuid target_guid;
+    if (!ExtractPlayerTarget(&args, &target, &target_guid))
+        target = player;
+
+    if (!target)
+    {
+        PSendSysMessage("Target player not found.");
+        return true;
+    }
+
+    uint32 bounty = sBountyMgr.GetBountyAmount(target->GetObjectGuid());
+    uint32 streak = sBountyMgr.GetKillstreak(target->GetObjectGuid());
+
+    PSendSysMessage("=== Bounty Info: %s ===", target->GetName());
+    PSendSysMessage("Current Bounty: |cffffd700%u Gold|r", bounty);
+    PSendSysMessage("PvP Killstreak: %u", streak);
     return true;
 }

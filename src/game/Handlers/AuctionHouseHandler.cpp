@@ -40,6 +40,12 @@
 // void called when player click on auctioneer npc
 void WorldSession::HandleAuctionHelloOpcode(WorldPackets::AuctionHouse::AuctionHello const& packet)
 {
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the Auction House.");
+        return;
+    }
+
     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(packet.auctioneerGuid, UNIT_NPC_FLAG_AUCTIONEER);
     if (!unit)
     {
@@ -229,6 +235,13 @@ AuctionHouseEntry const* WorldSession::GetCheckedAuctionHouseForAuctioneer(Objec
 // this void creates new auction and adds auction to some auctionhouse
 void WorldSession::HandleAuctionSellItem(WorldPackets::AuctionHouse::AuctionSellItem const& packet)
 {
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the Auction House.");
+        SendAuctionCommandResult(nullptr, AUCTION_STARTED, AUCTION_ERR_RESTRICTED_ACCOUNT);
+        return;
+    }
+
     if (!packet.bid || !packet.etime)
         return;                                             // check for cheaters
 
@@ -411,6 +424,13 @@ void WorldSession::HandleAuctionSellItem(WorldPackets::AuctionHouse::AuctionSell
 // this function is called when client bids or buys out auction
 void WorldSession::HandleAuctionPlaceBid(WorldPackets::AuctionHouse::AuctionPlaceBid const& packet)
 {
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the Auction House.");
+        SendAuctionCommandResult(nullptr, AUCTION_BID_PLACED, AUCTION_ERR_RESTRICTED_ACCOUNT);
+        return;
+    }
+
     if (!sWorld.getConfig(CONFIG_BOOL_GM_ALLOW_TRADES) && GetSecurity() > SEC_PLAYER)
     {
         SendAuctionCommandResult(nullptr, AUCTION_BID_PLACED, AUCTION_ERR_RESTRICTED_ACCOUNT);
@@ -707,6 +727,12 @@ public:
 // called when player lists his bids
 void WorldSession::HandleAuctionListBidderItems(WorldPackets::AuctionHouse::AuctionListBidderItem const& packet)
 {
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the Auction House.");
+        return;
+    }
+
     if (ReceivedAHListRequest())
         return; // Only one AH request at a time is allowed
 
@@ -730,6 +756,12 @@ void WorldSession::HandleAuctionListBidderItems(WorldPackets::AuctionHouse::Auct
 // this void sends player info about his auctions
 void WorldSession::HandleAuctionListOwnerItems(WorldPackets::AuctionHouse::AuctionListOwnerItems const& packet)
 {
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the Auction House.");
+        return;
+    }
+
     if (ReceivedAHListRequest())
         return;
 
@@ -751,6 +783,12 @@ void WorldSession::HandleAuctionListOwnerItems(WorldPackets::AuctionHouse::Aucti
 
 void WorldSession::HandleAuctionListItems(WorldPackets::AuctionHouse::AuctionListItems const& packet)
 {
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the Auction House.");
+        return;
+    }
+
     if (ReceivedAHListRequest())
         return;
 

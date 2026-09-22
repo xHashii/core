@@ -19,6 +19,7 @@ set (game_SRCS
     AccountMgr.cpp
     AuraRemovalMgr.cpp
     AutoBroadCastMgr.cpp
+    BountyMgr.cpp
     Camera.cpp
     Conditions.cpp
     CreatureGroups.cpp

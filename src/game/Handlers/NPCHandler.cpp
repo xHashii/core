@@ -35,6 +35,7 @@
 #include "Pet.h"
 #include "Spell.h"
 #include "Chat.h"
+#include "World.h"
 #include "CharacterDatabaseCache.h"
 
 enum StableResultCode
@@ -422,6 +423,22 @@ void WorldSession::HandleSpiritHealerActivateOpcode(WorldPackets::Npc::SpiritHea
         return;
     }
 
+    if (_player->IsHardcore() && _player->IsHardcoreDead())
+    {
+        if (sWorld.getConfig(CONFIG_BOOL_HARDCORE_ALLOW_SPIRIT_REVIVE))
+        {
+            _player->SetHardcore(false);
+            _player->SetHardcoreSSF(false);
+            _player->SetHardcoreDead(false);
+            SendNotification("You have forfeited Hardcore mode and returned to life as a normal character.");
+        }
+        else
+        {
+            SendNotification("Spirit Healers cannot resurrect Hardcore characters.");
+            return;
+        }
+    }
+
     GetPlayer()->InterruptSpellsWithChannelFlags(AURA_INTERRUPT_INTERACTING_CANCELS);
     GetPlayer()->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_INTERACTING_CANCELS);
     SendSpiritResurrect();
@@ -429,6 +446,22 @@ void WorldSession::HandleSpiritHealerActivateOpcode(WorldPackets::Npc::SpiritHea
 
 void WorldSession::SendSpiritResurrect()
 {
+    if (_player->IsHardcore() && _player->IsHardcoreDead())
+    {
+        if (sWorld.getConfig(CONFIG_BOOL_HARDCORE_ALLOW_SPIRIT_REVIVE))
+        {
+            _player->SetHardcore(false);
+            _player->SetHardcoreSSF(false);
+            _player->SetHardcoreDead(false);
+            SendNotification("You have forfeited Hardcore mode and returned to life as a normal character.");
+        }
+        else
+        {
+            SendNotification("Spirit Healers cannot resurrect Hardcore characters.");
+            return;
+        }
+    }
+
     _player->ResurrectPlayer(0.5f, true);
 
     _player->DurabilityLossAll(0.25f, true);

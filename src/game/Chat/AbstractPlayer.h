@@ -21,7 +21,13 @@ enum PlayerExtraFlags
     // other states
     PLAYER_EXTRA_PVP_DEATH          = 0x0100,               // store PvP death status until corpse creating.
     PLAYER_EXTRA_WHISP_RESTRICTION  = 0x0200,
-    PLAYER_EXTRA_CITY_PROTECTOR     = 0x0400
+    PLAYER_EXTRA_CITY_PROTECTOR     = 0x0400,
+
+    // hardcore
+    PLAYER_EXTRA_HARDCORE           = 0x0800,               // Hardcore character
+    PLAYER_EXTRA_HARDCORE_DEAD      = 0x1000,               // Dead hardcore character (cannot resurrect)
+    PLAYER_EXTRA_HARDCORE_SSF       = 0x2000,               // Solo Self-Found mode
+    PLAYER_EXTRA_HARDCORE_FORFEITED = 0x4000                // Hardcore mode forfeited (opted out)
 };
 
 class MasterPlayer;

@@ -1558,6 +1558,30 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
         return;
     }
 
+    if (filtered == "makgora" || filtered == ".makgora" || filtered == "duel to the death")
+    {
+        if (bot->IsAlive() && !bot->IsInCombat() && bot->GetHealthPercent() >= 90)
+        {
+            bot->SetMakgoraChallenger(fromPlayer.GetObjectGuid());
+            std::string text = std::string("I accept your challenge to the death in Mak'gora, ") + fromPlayer.GetName() + "! Lok'tar Ogar!";
+            bot->Say(text.c_str(), LANG_UNIVERSAL);
+            fromPlayer.CastSpell(bot, 7266, true);
+            if (fromPlayer.m_duel)
+                fromPlayer.m_duel->isMakgora = true;
+            if (bot->m_duel)
+                bot->m_duel->isMakgora = true;
+
+            std::ostringstream ss;
+            ss << "|cffff0000[Mak'gora]|r " << fromPlayer.GetName() << " and " << bot->GetName() << " have entered a Mak'gora (Duel to the Death)!";
+            sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+        }
+        else
+        {
+            TellPlayer(&fromPlayer, "I am not in condition to fight a Mak'gora right now.");
+        }
+        return;
+    }
+
     if (!IsAllowedCommand(filtered) && !GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, type != CHAT_MSG_WHISPER, &fromPlayer))
         return;
 

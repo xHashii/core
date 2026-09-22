@@ -84,6 +84,8 @@ typedef std::uint8_t  uint8;
 #ifndef _WIN32
 typedef uint16      WORD;
 typedef uint32      DWORD;
+#  define _stricmp strcasecmp
+#  define _strnicmp strncasecmp
 #endif //COMPILER
 
 typedef uint64 OBJECT_HANDLE;

@@ -134,6 +134,13 @@ void WorldSession::HandleSendMail(WorldPackets::Mail::SendMail const& packet)
         return;
     }
 
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
+        SendNotification("Solo Self-Found characters cannot use the mailbox.");
+        return;
+    }
+
     if (HasTrialRestrictions())
     {
         SendMailResult(0, MAIL_SEND, MAIL_ERR_DISABLED_FOR_TRIAL_ACC);
@@ -190,6 +197,16 @@ void WorldSession::HandleSendMail(WorldPackets::Mail::SendMail const& packet)
                    pl->GetGuidStr().c_str(), req->receiverName.c_str(), req->subject.c_str(), req->body.c_str(), req->itemGuid ? 1 : 0, req->money, req->COD);
         SendMailResult(0, MAIL_SEND, MAIL_ERR_RECIPIENT_NOT_FOUND);
         return;
+    }
+
+    if (Player* receiverPlr = ObjectAccessor::FindPlayer(req->receiver))
+    {
+        if (receiverPlr->IsHardcoreSSF())
+        {
+            SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
+            SendNotification("That player is in Solo Self-Found mode and cannot receive mail.");
+            return;
+        }
     }
 
     sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "%s is sending mail to %s with subject %s and body %s includes %u items, %u copper and %u COD copper",
@@ -559,6 +576,13 @@ void WorldSession::HandleMailTakeItem(WorldPackets::Mail::MailTakeItem const& pa
     Player* loadedPlayer = GetPlayer();
     ASSERT(pl);
 
+    if (loadedPlayer->IsHardcoreSSF())
+    {
+        SendMailResult(packet.mailId, MAIL_ITEM_TAKEN, MAIL_ERR_INTERNAL_ERROR);
+        SendNotification("Solo Self-Found characters cannot retrieve items from mail.");
+        return;
+    }
+
     Mail* m = pl->GetMail(packet.mailId);
     if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > time(nullptr))
     {
@@ -685,6 +709,13 @@ void WorldSession::HandleMailTakeMoney(WorldPackets::Mail::MailTakeMoney const& 
     Player* loadedPlayer = GetPlayer();
     ASSERT(pl);
 
+    if (loadedPlayer->IsHardcoreSSF())
+    {
+        SendMailResult(packet.mailId, MAIL_MONEY_TAKEN, MAIL_ERR_INTERNAL_ERROR);
+        SendNotification("Solo Self-Found characters cannot retrieve money from mail.");
+        return;
+    }
+
     Mail* m = pl->GetMail(packet.mailId);
     if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > time(nullptr))
     {
@@ -721,6 +752,12 @@ void WorldSession::HandleGetMailList(WorldPackets::Mail::GetMailList const& pack
 {
     if (!CheckMailBox(packet.mailboxGuid))
         return;
+
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendNotification("Solo Self-Found characters cannot use the mailbox.");
+        return;
+    }
 
     MasterPlayer* pl = GetMasterPlayer();
     ASSERT(pl);

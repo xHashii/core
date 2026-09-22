@@ -39,6 +39,12 @@
 
 void WorldSession::HandleBattlemasterHelloOpcode(WorldPackets::Battleground::BattlemasterHello const& packet)
 {
+    if (_player->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_DISABLE_BATTLEGROUNDS))
+    {
+        SendNotification("Battlegrounds are disabled on Hardcore realms.");
+        return;
+    }
+
     Creature* pCreature = GetPlayer()->GetMap()->GetCreature(packet.guid);
 
     if (!pCreature)
@@ -87,6 +93,12 @@ void WorldSession::HandleBattlemasterJoinOpcode(WorldPackets::Battleground::Batt
 
 void WorldSession::RequestBgJoinQueue(ObjectGuid battlemaster, uint32 instanceId, uint32 mapId, bool joinAsGroup)
 {
+    if (_player->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_DISABLE_BATTLEGROUNDS))
+    {
+        SendNotification("Battlegrounds are disabled on Hardcore realms.");
+        return;
+    }
+
     bool queuedAtBGPortal = false;
     bool isPremade = false;
     Group* grp;

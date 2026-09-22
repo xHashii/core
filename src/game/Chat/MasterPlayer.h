@@ -103,6 +103,11 @@ public:
 
     bool IsGameMaster() const { return m_ExtraFlags & PLAYER_EXTRA_GM_ON; }
 
+    // HARDCORE
+    bool IsHardcore() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE) != 0; }
+    bool IsHardcoreDead() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_DEAD) != 0; }
+    bool IsHardcoreSSF() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_SSF) != 0; }
+
     //
     bool IsVisibleGloballyFor(MasterPlayer* player) const;
     uint32 GetGMInvisibilityRank() const { return m_gmInvisibilityLevel; }

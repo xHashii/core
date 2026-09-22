@@ -6819,6 +6819,24 @@ void SpellAuraHolder::_AddSpellAuraHolder()
     // Break stealth on target
     if (GetSpellProto()->Custom & SPELL_CUSTOM_AURA_APPLY_BREAKS_STEALTH)
         m_target->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH, this);
+
+    // Hardcore Paladin restriction: interrupt Hearthstone if protected by Blessing of Protection, Divine Protection, or Divine Shield
+    if (m_spellProto->Id == 1022 || m_spellProto->Id == 5599 || m_spellProto->Id == 10278 ||
+        m_spellProto->Id == 498 || m_spellProto->Id == 5573 ||
+        m_spellProto->Id == 642 || m_spellProto->Id == 1020)
+    {
+        if (Player* pPlayer = m_target->ToPlayer())
+        {
+            if (pPlayer->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_PALADIN_RESTRICTION))
+            {
+                if (Spell* currentSpell = pPlayer->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+                {
+                    if (currentSpell->m_spellInfo && currentSpell->m_spellInfo->Id == 8690)
+                        pPlayer->InterruptNonMeleeSpells(false, 8690);
+                }
+            }
+        }
+    }
 }
 
 void SpellAuraHolder::_RemoveSpellAuraHolder()
