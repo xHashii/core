@@ -144,6 +144,9 @@ bool BattleGroundQueue::SelectionPool::AddGroup(GroupQueueInfo* ginfo, uint32 de
 // add group or player (grp == nullptr) to bg queue with the given leader and bg specifications
 GroupQueueInfo* BattleGroundQueue::AddGroup(Player* leader, Group* grp, BattleGroundTypeId bgTypeId, BattleGroundBracketId bracketId, bool isPremade, uint32 instanceId, std::vector<uint32>* excludedMembers)
 {
+    if (leader->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_DISABLE_BATTLEGROUNDS))
+        return nullptr;
+
     // create new ginfo
     GroupQueueInfo* ginfo = new GroupQueueInfo;
     ginfo->bgTypeId                  = bgTypeId;

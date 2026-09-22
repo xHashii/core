@@ -32,6 +32,20 @@ namespace ai
             packet << flagGuid;
             bot->GetSession()->HandleDuelAcceptedOpcode(MakeTypedPacket<WorldPackets::Duel::DuelAccepted>(packet));
 
+            if (bot->m_duel && (bot->HasPendingMakgoraChallenge(playerGuid) || (bot->m_duel->opponent && bot->m_duel->opponent->HasPendingMakgoraChallenge(bot->GetObjectGuid()))))
+            {
+                bot->m_duel->isMakgora = true;
+                if (bot->m_duel->opponent && bot->m_duel->opponent->m_duel)
+                    bot->m_duel->opponent->m_duel->isMakgora = true;
+
+                bot->Say("Lok'tar Ogar! A duel to the death! Only one shall survive!", LANG_UNIVERSAL);
+
+                std::ostringstream ss;
+                ss << "|cffff0000[Mak'gora]|r " << (bot->m_duel->opponent ? bot->m_duel->opponent->GetName() : "Challenger")
+                   << " and " << bot->GetName() << " have entered a Mak'gora (Duel to the Death)!";
+                sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+            }
+
             ai->ResetStrategies();
             return true;
         }

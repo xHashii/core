@@ -962,6 +962,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         Player* master = facade->GetMaster();
 
         nonCombatEngine->addStrategy("roll");
+        nonCombatEngine->addStrategy("pvp");
 #ifdef MANGOSBOT_TWO
         nonCombatEngine->addStrategy("glyph");
 #endif

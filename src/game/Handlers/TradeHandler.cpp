@@ -569,6 +569,13 @@ void WorldSession::HandleInitiateTradeOpcode(WorldPackets::Trade::InitiateTrade 
     if (GetPlayer()->m_trade)
         return;
 
+    if (GetPlayer()->IsHardcoreSSF())
+    {
+        SendTradeStatus(TRADE_STATUS_TRADE_REJECTED);
+        SendNotification("Solo Self-Found characters cannot trade with other players.");
+        return;
+    }
+
     if (!GetPlayer()->IsAlive())
     {
         SendTradeStatus(TRADE_STATUS_YOU_DEAD);
@@ -604,6 +611,13 @@ void WorldSession::HandleInitiateTradeOpcode(WorldPackets::Trade::InitiateTrade 
     if (pOther == GetPlayer() || pOther->m_trade)
     {
         SendTradeStatus(TRADE_STATUS_BUSY);
+        return;
+    }
+
+    if (pOther->IsHardcoreSSF())
+    {
+        SendTradeStatus(TRADE_STATUS_TRADE_REJECTED);
+        SendNotification("That player is in Solo Self-Found mode and cannot trade.");
         return;
     }
 

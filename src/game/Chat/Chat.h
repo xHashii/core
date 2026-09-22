@@ -443,6 +443,21 @@ class ChatHandler
         bool HandleCastTargetCommand(char* args);
 
         bool HandleCharacterAIInfoCommand(char* args);
+        bool HandleHardcoreCommand(char* args);
+        bool HandleHardcoreStatusCommand(char* args);
+        bool HandleHardcoreSSFCommand(char* args);
+        bool HandleHardcoreEnableCommand(char* args);
+        bool HandleHardcoreDisableCommand(char* args);
+        bool HandleHardcoreReviveCommand(char* args);
+        bool HandleMakgoraCommand(char* args);
+        bool HandleMakgoraChallengeCommand(char* args);
+        bool HandleMakgoraAcceptCommand(char* args);
+        bool HandleMakgoraDeclineCommand(char* args);
+        bool HandleMakgoraStatusCommand(char* args);
+        bool HandleBountyCommand(char* args);
+        bool HandleBountyListCommand(char* args);
+        bool HandleBountyAddCommand(char* args);
+        bool HandleBountyCheckCommand(char* args);
         bool HandleCharacterDeletedDeleteCommand(char* args);
         bool HandleCharacterDeletedListCommand(char* args, bool useName);
         bool HandleCharacterDeletedListAccountCommand(char* args);

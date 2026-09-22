@@ -17,7 +17,12 @@
 #include "scriptPCH.h"
 #include "custom.h"
 #include "ScriptedAI.h"
+#include "Chat.h"
+#include "World.h"
+#include "BountyMgr.h"
+#include "ObjectMgr.h"
 #include <ctime>
+#include <sstream>
 
 // TELEPORT NPC
 
@@ -1217,9 +1222,452 @@ CreatureAI* GetAI_custom_summon_debug(Creature *creature)
     return new npc_summon_debugAI(creature);
 }
 
+// HARDCORE & SOLO SELF-FOUND (SSF) GUIDE / NPC
+
+enum HardcoreGossipActions
+{
+    HC_GOSSIP_ACTION_ENABLE_HC       = 2001,
+    HC_GOSSIP_ACTION_ENABLE_SSF      = 2002,
+    HC_GOSSIP_ACTION_DISABLE_SSF     = 2003,
+    HC_GOSSIP_ACTION_FORFEIT_HC      = 2004,
+    HC_GOSSIP_ACTION_FORFEIT_RES     = 2005,
+    HC_GOSSIP_ACTION_STATUS          = 2006,
+    HC_GOSSIP_ACTION_INFO_MENU       = 2007,
+    HC_GOSSIP_ACTION_INFO_DEATH      = 2008,
+    HC_GOSSIP_ACTION_INFO_SSF        = 2009,
+    HC_GOSSIP_ACTION_INFO_PVP        = 2010,
+    HC_GOSSIP_ACTION_INFO_SPELLS     = 2011,
+    HC_GOSSIP_ACTION_MAIN_MENU       = 2012,
+    HC_GOSSIP_ACTION_CLOSE           = 2013
+};
+
+bool GossipHello_HardcoreNPC(Player* player, Creature* creature)
+{
+    if (!player || !creature)
+        return false;
+
+    bool isHardcore = player->IsHardcore();
+    bool isDead = player->IsHardcoreDead() || !player->IsAlive();
+    bool isSSF = player->IsHardcoreSSF();
+
+    if (isHardcore && isDead)
+    {
+        player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "I accept my mortality. Forfeit Hardcore mode and resurrect as a normal character.", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_FORFEIT_RES, "Are you sure? This will permanently remove Hardcore status from this character and return you to life as a normal character.", false);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Check my Character Status", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_STATUS);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "I shall embrace my eternal rest. (Close)", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_CLOSE);
+    }
+    else if (isHardcore)
+    {
+        if (isSSF)
+        {
+            player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "Abandon Solo Self-Found (SSF) Mode (Enable Trading & AH)", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_DISABLE_SSF, "Are you sure you want to abandon SSF mode? You will remain Hardcore, but trading, Auction House, and mail will be enabled.", false);
+        }
+        else
+        {
+            player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "Activate Solo Self-Found (SSF) Mode", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_ENABLE_SSF, "Are you sure you wish to activate SSF Mode? Trading, Auction House, and Mailbox will be disabled.", false);
+        }
+
+        player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "Abandon Hardcore Mode (Become a Normal Character)", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_FORFEIT_HC, "Are you sure you want to forfeit Hardcore mode? You will become a standard character and can resurrect normally.", false);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Hardcore Rules & Information", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_MENU);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Check my Character Status", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_STATUS);
+    }
+    else
+    {
+        player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "Activate Hardcore Mode (Permanent Death Challenge)", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_ENABLE_HC, "Are you sure you wish to activate Hardcore Mode? Death is permanent, accidental PvP is protected, battlegrounds are disabled, and debuff limits are removed.", false);
+        player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "Activate Solo Self-Found (SSF) Hardcore Mode", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_ENABLE_SSF, "Are you sure you wish to activate Solo Self-Found (SSF) Hardcore Mode? You will have permanent death, and all player trading, Auction House, and mailbox usage will be disabled.", false);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Hardcore Rules & Information", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_MENU);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Check my Character Status", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_STATUS);
+    }
+
+    player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+    return true;
+}
+
+bool GossipSelect_HardcoreNPC(Player* player, Creature* creature, uint32 sender, uint32 action)
+{
+    if (!player || !creature)
+        return false;
+
+    if (sender != GOSSIP_SENDER_MAIN)
+        return true;
+
+    switch (action)
+    {
+        case HC_GOSSIP_ACTION_ENABLE_HC:
+        {
+            if (!player->IsAlive())
+            {
+                player->GetSession()->SendNotification("You cannot activate Hardcore mode while dead!");
+                player->CLOSE_GOSSIP_MENU();
+                return true;
+            }
+
+            player->SetHardcore(true);
+            player->SetHardcoreDead(false);
+            player->GetSession()->SendNotification("You have activated Hardcore Mode! One life, one journey. Good luck!");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r You have embraced the Hardcore Challenge! May your blade never dull.");
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_ENABLE_SSF:
+        {
+            if (!player->IsAlive())
+            {
+                player->GetSession()->SendNotification("You cannot activate SSF mode while dead!");
+                player->CLOSE_GOSSIP_MENU();
+                return true;
+            }
+
+            player->SetHardcore(true);
+            player->SetHardcoreSSF(true);
+            player->SetHardcoreDead(false);
+            player->GetSession()->SendNotification("You have activated Solo Self-Found (SSF) Hardcore Mode!");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r Solo Self-Found Mode activated. Trading, Auction House, and Mail are disabled.");
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_DISABLE_SSF:
+        {
+            player->SetHardcoreSSF(false);
+            player->GetSession()->SendNotification("Solo Self-Found (SSF) mode has been abandoned.");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r You have abandoned Solo Self-Found mode. Trading, AH, and Mail are now enabled.");
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_FORFEIT_HC:
+        {
+            player->SetHardcore(false);
+            player->SetHardcoreSSF(false);
+            player->SetHardcoreDead(false);
+            player->GetSession()->SendNotification("Hardcore mode removed. You are now a normal character.");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r You have forfeited Hardcore mode. You are now a standard character.");
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_FORFEIT_RES:
+        {
+            player->SetHardcore(false);
+            player->SetHardcoreSSF(false);
+            player->SetHardcoreDead(false);
+
+            if (!player->IsAlive())
+            {
+                player->ResurrectPlayer(0.5f, true);
+                player->DurabilityLossAll(0.25f, true);
+                player->SpawnCorpseBones();
+            }
+
+            player->GetSession()->SendNotification("You have forfeited Hardcore mode and returned to life!");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r You have forfeited Hardcore mode and returned to life as a normal character.");
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_STATUS:
+        {
+            ChatHandler(player).PSendSysMessage("=== Hardcore & SSF Status ===");
+            ChatHandler(player).PSendSysMessage("Hardcore: %s", player->IsHardcore() ? "|cff00ff00ACTIVE|r" : "|cffff0000INACTIVE|r");
+            if (player->IsHardcore())
+            {
+                ChatHandler(player).PSendSysMessage("Status: %s", (player->IsHardcoreDead() || !player->IsAlive()) ? "|cffff0000FALLEN (Ghost)|r" : "|cff00ff00ALIVE|r");
+                ChatHandler(player).PSendSysMessage("Solo Self-Found (SSF): %s", player->IsHardcoreSSF() ? "|cff00ff00ACTIVE|r" : "|cffff0000INACTIVE|r");
+            }
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_INFO_MENU:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Rule 1: Permanent Death", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_DEATH);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Rule 2: Solo Self-Found (SSF)", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_SSF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Rule 3: PvP Protection & Battlegrounds", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_PVP);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Rule 4: Paladin Restrictions & Debuffs", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_SPELLS);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- [Back to Main Menu]", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_MAIN_MENU);
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_INFO_DEATH:
+        {
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore Info]|r Permanent Death: If your character dies, resurrection spells, corpse retrieval, and spirit healers cannot revive you. However, you may speak to this NPC or Spirit Healer to forfeit Hardcore mode and continue as a normal character.");
+            GossipHello_HardcoreNPC(player, creature);
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_INFO_SSF:
+        {
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore Info]|r Solo Self-Found (SSF): SSF characters cannot trade with other players, use the Auction House, or send/receive player mail. Everything must be found or crafted on your own.");
+            GossipHello_HardcoreNPC(player, creature);
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_INFO_PVP:
+        {
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore Info]|r Accidental PvP: You cannot accidentally flag for PvP by targeting or attacking flagged players unless you explicitly type /pvp. Battlegrounds are disabled on Hardcore.");
+            GossipHello_HardcoreNPC(player, creature);
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_INFO_SPELLS:
+        {
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore Info]|r Class Restrictions: Paladins cannot cast Hearthstone while Divine Shield, Divine Protection, or Blessing of Protection is active. All 16-debuff and 32-buff limit constraints are removed.");
+            GossipHello_HardcoreNPC(player, creature);
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_MAIN_MENU:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+            GossipHello_HardcoreNPC(player, creature);
+            break;
+        }
+
+        case HC_GOSSIP_ACTION_CLOSE:
+        {
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+    }
+    return true;
+}
+
+// =========================================================================
+// BOUNTY BOARD & BOUNTY WARDEN NPC GOSSIP
+// =========================================================================
+
+enum BountyGossipAction
+{
+    BOUNTY_ACTION_MAIN = 1000,
+    BOUNTY_ACTION_VIEW_LIST,
+    BOUNTY_ACTION_PLACE_MENU,
+    BOUNTY_ACTION_PLACE_5G,
+    BOUNTY_ACTION_PLACE_10G,
+    BOUNTY_ACTION_PLACE_25G,
+    BOUNTY_ACTION_PLACE_50G,
+    BOUNTY_ACTION_PLACE_100G,
+    BOUNTY_ACTION_CHECK_SELF,
+    BOUNTY_ACTION_RULES_INFO,
+    BOUNTY_ACTION_CLOSE
+};
+
+static void ShowBountyBoardMainMenu(Player* player, Creature* creature)
+{
+    player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, "View Active Realm Bounties (Top Wanted)", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_VIEW_LIST);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_MONEY_BAG, "Place a Bounty on a Player or Bot", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_MENU);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Check My Active Bounty & PvP Streak", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Bounty System & World PvP Information", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Farewell. (Close)", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CLOSE);
+
+    player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+}
+
+bool GossipHello_BountyBoard(Player* player, Creature* creature)
+{
+    if (!player || !creature)
+        return false;
+
+    ShowBountyBoardMainMenu(player, creature);
+    return true;
+}
+
+bool GossipSelect_BountyBoard(Player* player, Creature* creature, uint32 sender, uint32 action)
+{
+    if (!player || !creature)
+        return false;
+
+    if (sender != GOSSIP_SENDER_MAIN)
+        return true;
+
+    switch (action)
+    {
+        case BOUNTY_ACTION_MAIN:
+        {
+            ShowBountyBoardMainMenu(player, creature);
+            break;
+        }
+
+        case BOUNTY_ACTION_VIEW_LIST:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            auto topBounties = sBountyMgr.GetTopBounties(10);
+            if (topBounties.empty())
+            {
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "No active bounties on the realm! Slay enemies in PvP or place one.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            }
+            else
+            {
+                uint32 rank = 1;
+                for (const auto& entry : topBounties)
+                {
+                    std::ostringstream ss;
+                    ss << "#" << rank++ << ": " << entry.name << " (Lvl " << entry.level << ") - "
+                       << entry.bountyGold << " Gold | Streak: " << entry.killstreak << " | " << entry.zoneName;
+                    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, ss.str().c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_VIEW_LIST);
+                }
+            }
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_PLACE_MENU:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            Player* target = sObjectMgr.GetPlayer(player->GetSelectionGuid());
+            if (target && target != player)
+            {
+                std::string targetName = target->GetName();
+                std::string title = "Target: " + targetName + " (Level " + std::to_string(target->GetLevel()) + ")";
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, title.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_MENU);
+
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 5 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_5G, "Place 5 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 10 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_10G, "Place 10 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 25 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_25G, "Place 25 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 50 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_50G, "Place 50 Gold bounty on " + targetName + "?", false);
+                player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_MONEY_BAG, "Place 100 Gold Bounty", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_PLACE_100G, "Place 100 Gold bounty on " + targetName + "?", false);
+            }
+            else
+            {
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Select/Target a player or bot first to place a bounty via menu.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Or use chat command: .bounty add <target_name> <gold>", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            }
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_PLACE_5G:
+        case BOUNTY_ACTION_PLACE_10G:
+        case BOUNTY_ACTION_PLACE_25G:
+        case BOUNTY_ACTION_PLACE_50G:
+        case BOUNTY_ACTION_PLACE_100G:
+        {
+            uint32 gold = 5;
+            if (action == BOUNTY_ACTION_PLACE_10G) gold = 10;
+            else if (action == BOUNTY_ACTION_PLACE_25G) gold = 25;
+            else if (action == BOUNTY_ACTION_PLACE_50G) gold = 50;
+            else if (action == BOUNTY_ACTION_PLACE_100G) gold = 100;
+
+            Player* target = sObjectMgr.GetPlayer(player->GetSelectionGuid());
+            if (!target)
+            {
+                player->GetSession()->SendNotification("Target player or bot not found. Select a target first!");
+                ShowBountyBoardMainMenu(player, creature);
+                return true;
+            }
+
+            if (sBountyMgr.AddBounty(player, target, gold))
+            {
+                player->GetSession()->SendNotification("Bounty placed successfully!");
+                player->CLOSE_GOSSIP_MENU();
+            }
+            else
+            {
+                ShowBountyBoardMainMenu(player, creature);
+            }
+            break;
+        }
+
+        case BOUNTY_ACTION_CHECK_SELF:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            uint32 bounty = sBountyMgr.GetBountyAmount(player->GetObjectGuid());
+            uint32 streak = sBountyMgr.GetKillstreak(player->GetObjectGuid());
+            uint32 makgoraWins = player->GetMakgoraWins();
+
+            std::string bStr = "Your Active Head Bounty: " + std::to_string(bounty) + " Gold";
+            std::string kStr = "Current PvP Killstreak: " + std::to_string(streak) + " Kills";
+            std::string mStr = "Total Mak'gora Victories: " + std::to_string(makgoraWins);
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_MONEY_BAG, bStr.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, kStr.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_BATTLE, mStr.c_str(), GOSSIP_SENDER_MAIN, BOUNTY_ACTION_CHECK_SELF);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_RULES_INFO:
+        {
+            player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[Killstreaks]: 3 kills (5g), 5 kills (15g), 10 kills (50g), 20 kills (100g).", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[Claiming]: Slay any wanted target in PvP or Mak'gora to claim the gold reward.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[World PvP Hotspots]: Hillsbrad, Ashenvale, Stonetalon, Stranglethorn, Arathi & Tanaris.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[Mak'gora]: Duel to the Death! Type .makgora challenge <target> or whisper bot.", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_RULES_INFO);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "<- Back to Bounty Board Menu", GOSSIP_SENDER_MAIN, BOUNTY_ACTION_MAIN);
+
+            player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+            break;
+        }
+
+        case BOUNTY_ACTION_CLOSE:
+        {
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+    }
+    return true;
+}
+
 void AddSC_custom_creatures()
 {
     Script* newscript;
+
+    newscript = new Script;
+    newscript->Name = "custom_bounty_board";
+    newscript->pGossipHello = &GossipHello_BountyBoard;
+    newscript->pGossipSelect = &GossipSelect_BountyBoard;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "npc_bounty_board";
+    newscript->pGossipHello = &GossipHello_BountyBoard;
+    newscript->pGossipSelect = &GossipSelect_BountyBoard;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "npc_bounty_warden";
+    newscript->pGossipHello = &GossipHello_BountyBoard;
+    newscript->pGossipSelect = &GossipSelect_BountyBoard;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "custom_hardcore_npc";
+    newscript->pGossipHello = &GossipHello_HardcoreNPC;
+    newscript->pGossipSelect = &GossipSelect_HardcoreNPC;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "npc_hardcore_guide";
+    newscript->pGossipHello = &GossipHello_HardcoreNPC;
+    newscript->pGossipSelect = &GossipSelect_HardcoreNPC;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "npc_mystic_of_mortality";
+    newscript->pGossipHello = &GossipHello_HardcoreNPC;
+    newscript->pGossipSelect = &GossipSelect_HardcoreNPC;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "npc_watcher";
+    newscript->pGossipHello = &GossipHello_HardcoreNPC;
+    newscript->pGossipSelect = &GossipSelect_HardcoreNPC;
+    newscript->RegisterSelf(false);
 
     newscript = new Script;
     newscript->Name = "custom_teleport_npc";

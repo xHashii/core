@@ -2,15 +2,71 @@
 #include "playerbot/playerbot.h"
 #include "EnemyPlayerValue.h"
 #include "TargetValue.h"
+#include "BountyMgr.h"
 
 using namespace ai;
 
 namespace
 {
+    bool IsWorldPvPZone(Player* player)
+    {
+        if (!player)
+            return false;
+
+        uint32 zoneId = player->GetZoneId();
+        uint32 areaId = player->GetAreaId();
+
+        // Hillsbrad Foothills (267), Ashenvale (331), Stonetalon Mountains (406),
+        // Stranglethorn Vale (33), Arathi Highlands (45), Tanaris (440),
+        // Eastern Plaguelands (139), Western Plaguelands (28), Silithus (1377),
+        // Felwood (361), Searing Gorge (51), Burning Steppes (46)
+        switch (zoneId)
+        {
+            case 267:  // Hillsbrad Foothills
+            case 331:  // Ashenvale
+            case 406:  // Stonetalon Mountains
+            case 33:   // Stranglethorn Vale
+            case 45:   // Arathi Highlands
+            case 440:  // Tanaris
+            case 139:  // Eastern Plaguelands
+            case 28:   // Western Plaguelands
+            case 1377: // Silithus
+            case 361:  // Felwood
+            case 51:   // Searing Gorge
+            case 46:   // Burning Steppes
+                return true;
+            default:
+                break;
+        }
+        switch (areaId)
+        {
+            case 267:
+            case 331:
+            case 406:
+            case 33:
+            case 45:
+            case 440:
+            case 139:
+            case 28:
+            case 1377:
+            case 361:
+            case 51:
+            case 46:
+                return true;
+            default:
+                break;
+        }
+        return false;
+    }
+
     uint32 GetPvpEngageChance(Player* bot, Player* target)
     {
         if (!bot || !target)
             return 0;
+
+        // Always engage if target has a bounty or in a World PvP Zone
+        if (sBountyMgr.HasBounty(target->GetObjectGuid()) || IsWorldPvPZone(bot) || IsWorldPvPZone(target))
+            return 100;
 
         // Positive = target is higher level than bot.
         // Negative = bot is higher level than target.
@@ -80,7 +136,7 @@ namespace
         if (!bot || !target)
             return false;
 
-        if (IsDefendingAgainstPlayer(bot, target))
+        if (IsDefendingAgainstPlayer(bot, target) || sBountyMgr.HasBounty(target->GetObjectGuid()) || IsWorldPvPZone(bot) || IsWorldPvPZone(target))
             return true;
 
         uint32 engageChance = GetPvpEngageChance(bot, target);
@@ -222,6 +278,27 @@ Unit* EnemyPlayerValue::Calculate()
     std::list<ObjectGuid> enemyPlayers = AI_VALUE(std::list<ObjectGuid>, "enemy player targets");
     if (!enemyPlayers.empty())
     {
+        // Prioritize enemy player with the highest bounty
+        Unit* highestBountyTarget = nullptr;
+        uint32 maxBounty = 0;
+        for (const ObjectGuid& targetGuid : enemyPlayers)
+        {
+            Unit* target = ai->GetUnit(targetGuid);
+            if (target && target->IsPlayer())
+            {
+                uint32 b = sBountyMgr.GetBountyAmount(target->GetObjectGuid());
+                if (b > maxBounty)
+                {
+                    maxBounty = b;
+                    highestBountyTarget = target;
+                }
+            }
+        }
+        if (highestBountyTarget && maxBounty > 0)
+        {
+            return highestBountyTarget;
+        }
+
         const bool isMelee = !ai->IsRanged(bot);
         uint32 bestEnemyPlayerHealth = std::numeric_limits<uint32>::max();
         float bestEnemyPlayerDistance = std::numeric_limits<float>::max();
@@ -278,6 +355,9 @@ Unit* EnemyPlayerValue::Calculate()
 
 float EnemyPlayerValue::GetMaxAttackDistance(Player* bot)
 {
+    if (IsWorldPvPZone(bot))
+        return 80.0f;
+
     if (!bot->GetBattleGround())
         return 60.0f;
 

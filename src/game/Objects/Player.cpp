@@ -42,6 +42,7 @@
 #include "ChannelMgr.h"
 #include "MapManager.h"
 #include "MapPersistentStateMgr.h"
+#include "Spell.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "Geometry.h"
@@ -1630,18 +1631,25 @@ void Player::SetDeathState(DeathState s)
         if (ObjectGuid lootGuid = GetLootGuid())
             GetSession()->DoLootRelease(lootGuid);
 
+        if (IsHardcore())
+        {
+            SetHardcoreDead(true);
+        }
+        else
+        {
 // World of Warcraft Client Patch 1.6.0 (2005-07-12)
 // - Self-resurrection spells show their name on the button in the release spirit dialog.
 #if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_6_1
-        // save value before aura remove in Unit::SetDeathState
-        ressSpellId = GetUInt32Value(PLAYER_SELF_RES_SPELL);
+            // save value before aura remove in Unit::SetDeathState
+            ressSpellId = GetUInt32Value(PLAYER_SELF_RES_SPELL);
 #else
-        ressSpellId = GetResurrectionSpellId();
+            ressSpellId = GetResurrectionSpellId();
 #endif
 
-        // passive spell
-        if (!ressSpellId)
-            ressSpellId = SelectResurrectionSpellId();
+            // passive spell
+            if (!ressSpellId)
+                ressSpellId = SelectResurrectionSpellId();
+        }
 
         if (m_zoneScript)
             m_zoneScript->OnPlayerDeath(this);
@@ -1650,7 +1658,7 @@ void Player::SetDeathState(DeathState s)
     Unit::SetDeathState(s);
 
     // restore resurrection spell id for player after aura remove
-    if (s == JUST_DIED && cur && ressSpellId)
+    if (s == JUST_DIED && cur && ressSpellId && !IsHardcore())
     {
 #if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_6_1
         SetUInt32Value(PLAYER_SELF_RES_SPELL, ressSpellId);
@@ -2825,6 +2833,56 @@ void Player::SetGMVisible(bool on, bool notify)
     }
     // Sauvegarde directement pour que le site n'affiche plus le MJ parmis les joueurs co.
     CharacterDatabase.PExecute("UPDATE characters SET extra_flags = %u WHERE guid = %u", m_ExtraFlags, GetGUIDLow());
+}
+
+bool Player::IsHardcore() const
+{
+    if (!sWorld.getConfig(CONFIG_BOOL_HARDCORE_ENABLE))
+        return false;
+
+    if (sWorld.getConfig(CONFIG_UINT32_HARDCORE_MODE) == 1)
+        return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_FORFEITED) == 0;
+
+    return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE) != 0;
+}
+
+void Player::SetHardcore(bool on)
+{
+    if (on)
+    {
+        m_ExtraFlags |= PLAYER_EXTRA_HARDCORE;
+        m_ExtraFlags &= ~PLAYER_EXTRA_HARDCORE_FORFEITED;
+    }
+    else
+    {
+        m_ExtraFlags &= ~PLAYER_EXTRA_HARDCORE;
+        m_ExtraFlags |= PLAYER_EXTRA_HARDCORE_FORFEITED;
+    }
+
+    if (IsInWorld())
+        CharacterDatabase.PExecute("UPDATE characters SET extra_flags = %u WHERE guid = %u", m_ExtraFlags, GetGUIDLow());
+}
+
+void Player::SetHardcoreDead(bool on)
+{
+    if (on)
+        m_ExtraFlags |= PLAYER_EXTRA_HARDCORE_DEAD;
+    else
+        m_ExtraFlags &= ~PLAYER_EXTRA_HARDCORE_DEAD;
+
+    if (IsInWorld())
+        CharacterDatabase.PExecute("UPDATE characters SET extra_flags = %u WHERE guid = %u", m_ExtraFlags, GetGUIDLow());
+}
+
+void Player::SetHardcoreSSF(bool on)
+{
+    if (on)
+        m_ExtraFlags |= PLAYER_EXTRA_HARDCORE_SSF;
+    else
+        m_ExtraFlags &= ~PLAYER_EXTRA_HARDCORE_SSF;
+
+    if (IsInWorld())
+        CharacterDatabase.PExecute("UPDATE characters SET extra_flags = %u WHERE guid = %u", m_ExtraFlags, GetGUIDLow());
 }
 
 void Player::SetCheatFly(bool on, bool notify)
@@ -4740,6 +4798,9 @@ void Player::BuildPlayerRepop()
 
 void Player::ResurrectPlayer(float restore_percent, bool applySickness)
 {
+    if (IsHardcore() && IsHardcoreDead())
+        return;
+
     // Interrupt resurrect spells
     InterruptSpellsCastedOnMe(false, true);
 
@@ -6855,6 +6916,14 @@ void Player::DuelComplete(DuelCompleteType type)
         packet->winnerName = m_duel->opponent->GetName();
         packet->loserName = GetName();
         SendObjectMessageToSet(std::move(packet), true);
+
+        if (m_duel && m_duel->isMakgora && type == DUEL_FLED)
+        {
+            std::string winnerName = m_duel->opponent ? m_duel->opponent->GetName() : "their opponent";
+            std::ostringstream ss;
+            ss << "|cffff0000[Mak'gora Cowardice]|r " << GetName() << " has fled from a Mak'gora (Duel to the Death) against " << winnerName << "!";
+            sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+        }
     }
 
     //Remove Duel Flag object
@@ -6926,6 +6995,27 @@ void Player::DuelComplete(DuelCompleteType type)
     if (m_duel->opponent->m_duel)
         m_duel->opponent->m_duel->finished = true;
     m_duel->finished = true;
+}
+
+void Player::AddMakgoraWin(Player* victim)
+{
+    ++m_makgoraWins;
+    PSendSysMessage("|cffff0000[Mak'gora]|r You have slain %s in Mak'gora! Total victories: %u", victim ? victim->GetName() : "your opponent", m_makgoraWins);
+
+    if (victim)
+    {
+        uint32 earItemId = 5738; // Severed Ear
+        ItemPosCountVec dest;
+        uint8 msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, earItemId, 1);
+        if (msg == EQUIP_ERR_OK)
+        {
+            if (Item* item = StoreNewItem(dest, earItemId, true))
+            {
+                PSendSysMessage("|cffff0000[Mak'gora]|r You claimed the severed ear of %s as a trophy!", victim->GetName());
+                SendNewItem(item, 1, true, false);
+            }
+        }
+    }
 }
 
 //---------------------------------------------------------//
@@ -15559,7 +15649,10 @@ void Player::LoadCorpse()
         else
         {
             //Prevent Dead Player login without corpse
-            ResurrectPlayer(0.5f);
+            if (IsHardcore() && IsHardcoreDead())
+                ApplyGhostForm();
+            else
+                ResurrectPlayer(0.5f);
         }
     }
 }
@@ -16378,6 +16471,10 @@ bool Player::SaveNewPlayer(WorldSession* session, uint32 guidlow, std::string co
         extraFlags |= PLAYER_EXTRA_GM_ACCEPT_TICKETS;
     else
         extraFlags |= PLAYER_EXTRA_ACCEPT_WHISPERS;
+
+    if (sWorld.getConfig(CONFIG_BOOL_HARDCORE_ENABLE))
+        extraFlags |= PLAYER_EXTRA_HARDCORE;
+
     uberInsert.addUInt32(extraFlags);
 
     PlayerLevelInfo levelInfo;
@@ -20197,6 +20294,12 @@ uint32 Player::GetBaseWeaponSkillValue(WeaponAttackType attType) const
 
 void Player::ResurrectUsingRequestData()
 {
+    if (IsHardcore() && IsHardcoreDead())
+    {
+        ClearResurrectRequestData();
+        return;
+    }
+
     // Teleport before resurrecting by player, otherwise the player might get attacked from creatures near his corpse
     if (m_resurrectData.resurrectorGuid.IsPlayer())
     {

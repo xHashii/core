@@ -257,6 +257,38 @@ ChatCommand * ChatHandler::getCommandTable()
         { nullptr,          0,                  false, nullptr,                                        "", nullptr }
     };
 
+    static ChatCommand hardcoreCommandTable[] =
+    {
+        { "status",         SEC_PLAYER,         false, &ChatHandler::HandleHardcoreStatusCommand,         "", nullptr },
+        { "ssf",            SEC_PLAYER,         false, &ChatHandler::HandleHardcoreSSFCommand,            "", nullptr },
+        { "enable",         SEC_GAMEMASTER,     false, &ChatHandler::HandleHardcoreEnableCommand,         "", nullptr },
+        { "disable",        SEC_GAMEMASTER,     false, &ChatHandler::HandleHardcoreDisableCommand,        "", nullptr },
+        { "revive",         SEC_GAMEMASTER,     false, &ChatHandler::HandleHardcoreReviveCommand,         "", nullptr },
+        { "",               SEC_PLAYER,         false, &ChatHandler::HandleHardcoreStatusCommand,         "", nullptr },
+        { nullptr,          0,                  false, nullptr,                                           "", nullptr }
+    };
+
+    static ChatCommand makgoraCommandTable[] =
+    {
+        { "challenge",      SEC_PLAYER,         false, &ChatHandler::HandleMakgoraChallengeCommand,       "", nullptr },
+        { "accept",         SEC_PLAYER,         false, &ChatHandler::HandleMakgoraAcceptCommand,          "", nullptr },
+        { "decline",        SEC_PLAYER,         false, &ChatHandler::HandleMakgoraDeclineCommand,         "", nullptr },
+        { "status",         SEC_PLAYER,         false, &ChatHandler::HandleMakgoraStatusCommand,          "", nullptr },
+        { "stats",          SEC_PLAYER,         false, &ChatHandler::HandleMakgoraStatusCommand,          "", nullptr },
+        { "",               SEC_PLAYER,         false, &ChatHandler::HandleMakgoraCommand,                "", nullptr },
+        { nullptr,          0,                  false, nullptr,                                           "", nullptr }
+    };
+
+    static ChatCommand bountyCommandTable[] =
+    {
+        { "add",            SEC_PLAYER,         false, &ChatHandler::HandleBountyAddCommand,              "", nullptr },
+        { "place",          SEC_PLAYER,         false, &ChatHandler::HandleBountyAddCommand,              "", nullptr },
+        { "list",           SEC_PLAYER,         false, &ChatHandler::HandleBountyListCommand,             "", nullptr },
+        { "check",          SEC_PLAYER,         false, &ChatHandler::HandleBountyCheckCommand,            "", nullptr },
+        { "",               SEC_PLAYER,         false, &ChatHandler::HandleBountyCommand,                 "", nullptr },
+        { nullptr,          0,                  false, nullptr,                                           "", nullptr }
+    };
+
     static ChatCommand cheatCommandTable[] =
     {
         { "fly",            SEC_GAMEMASTER,     false, &ChatHandler::HandleCheatFlyCommand,               "", nullptr },
@@ -1203,6 +1235,10 @@ ChatCommand * ChatHandler::getCommandTable()
         { "go",             SEC_TICKETMASTER,   false, nullptr,                                        "", goCommandTable       },
         { "gobject",        SEC_TICKETMASTER,   false, nullptr,                                        "", gobjectCommandTable  },
         { "guild",          SEC_GAMEMASTER,     true, nullptr,                                         "", guildCommandTable    },
+        { "hardcore",       SEC_PLAYER,         false, nullptr,                                        "", hardcoreCommandTable },
+        { "ssf",            SEC_PLAYER,         false, &ChatHandler::HandleHardcoreSSFCommand,         "", nullptr },
+        { "makgora",        SEC_PLAYER,         false, nullptr,                                        "", makgoraCommandTable  },
+        { "bounty",         SEC_PLAYER,         false, nullptr,                                        "", bountyCommandTable   },
         { "instance",       SEC_TICKETMASTER,   true, nullptr,                                         "", instanceCommandTable },
         { "learn",          SEC_MODERATOR,      false, nullptr,                                        "", learnCommandTable    },
         { "list",           SEC_TICKETMASTER,   true, nullptr,                                         "", listCommandTable     },

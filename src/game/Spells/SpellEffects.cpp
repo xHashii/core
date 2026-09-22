@@ -254,6 +254,9 @@ void Spell::EffectResurrectNew(SpellEffectIndex effIdx)
 
     Player* pTarget = ((Player*)unitTarget);
 
+    if (pTarget->IsHardcore() && pTarget->IsHardcoreDead())
+        return;
+
     if (pTarget->IsRessurectRequested())      // already have one active request
         return;
 
@@ -4717,6 +4720,12 @@ void Spell::EffectDuel(SpellEffectIndex effIdx)
     duel2->startTime  = 0;
     duel2->startTimer = 0;
 
+    if (caster->HasPendingMakgoraChallenge(target->GetObjectGuid()) || target->HasPendingMakgoraChallenge(caster->GetObjectGuid()))
+    {
+        duel->isMakgora = true;
+        duel2->isMakgora = true;
+    }
+
     if (GenericTransport* t = caster->GetTransport())
     {
         duel->transportGuid  = t->GetGUIDLow();
@@ -5206,6 +5215,9 @@ void Spell::EffectResurrect(SpellEffectIndex effIdx)
         return;
 
     Player* pTarget = ((Player*)unitTarget);
+
+    if (pTarget->IsHardcore() && pTarget->IsHardcoreDead())
+        return;
 
     if (pTarget->IsRessurectRequested())      // already have one active request
         return;

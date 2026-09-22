@@ -23,6 +23,7 @@
 #include "Pet.h"
 #include "Totem.h"
 #include "Player.h"
+#include "BountyMgr.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "Log.h"
@@ -38,6 +39,7 @@
 #include "SpellAuras.h"
 #include "SpellModifier.h"
 #include "ObjectAccessor.h"
+#include "Language.h"
 #include "CreatureAI.h"
 #include "GameObjectAI.h"
 #include "TemporarySummon.h"
@@ -766,18 +768,21 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
     bool duel_hasEnded = false;
     if (pVictim->IsPlayer() && ((Player*)pVictim)->m_duel && (damage + 1) >= health)
     {
-        // prevent kill only if killed in duel and killed by opponent or opponent controlled creature
-        if (((Player*)pVictim)->m_duel->opponent == this ||
-            ((Player*)pVictim)->m_duel->opponent->GetObjectGuid() == GetOwnerGuid()
-            // World of Warcraft Client Patch 1.7.0 (2005-09-13)
-            // - Fixed bug where you could kill someone in a duel with spell reflection.
+        if (!((Player*)pVictim)->IsMakgora())
+        {
+            // prevent kill only if killed in duel and killed by opponent or opponent controlled creature
+            if (((Player*)pVictim)->m_duel->opponent == this ||
+                ((Player*)pVictim)->m_duel->opponent->GetObjectGuid() == GetOwnerGuid()
+                // World of Warcraft Client Patch 1.7.0 (2005-09-13)
+                // - Fixed bug where you could kill someone in a duel with spell reflection.
 #if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_6_1
-            || pVictim == this && reflected
+                || pVictim == this && reflected
 #endif
-            )
-            damage = health ? health - 1 : 0;
+                )
+                damage = health ? health - 1 : 0;
 
-        duel_hasEnded = true;
+            duel_hasEnded = true;
+        }
     }
 
     // Enter combat or extend leash timer.
@@ -1118,14 +1123,17 @@ void Unit::Kill(Unit* pVictim, SpellEntry const* spellProto, bool durabilityLoss
 
         // save value before aura remove
         uint32 ressSpellId = 0;
+        if (!pPlayerVictim || !pPlayerVictim->IsHardcore())
+        {
 #if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_6_1
-        ressSpellId = pVictim->GetUInt32Value(PLAYER_SELF_RES_SPELL);
-        if (!ressSpellId)
-            ressSpellId = ((Player*)pVictim)->SelectResurrectionSpellId();
+            ressSpellId = pVictim->GetUInt32Value(PLAYER_SELF_RES_SPELL);
+            if (!ressSpellId)
+                ressSpellId = ((Player*)pVictim)->SelectResurrectionSpellId();
 #else
-        if (HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CAN_SELF_RESURRECT))
-            ressSpellId = ((Player*)pVictim)->GetResurrectionSpellId();
+            if (HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CAN_SELF_RESURRECT))
+                ressSpellId = ((Player*)pVictim)->GetResurrectionSpellId();
 #endif
+        }
 
         pVictim->RemoveAllAurasOnDeath();
 
@@ -1152,17 +1160,54 @@ void Unit::Kill(Unit* pVictim, SpellEntry const* spellProto, bool durabilityLoss
         DEBUG_FILTER_LOG(LOG_FILTER_DAMAGE, "SET JUST_DIED");
         pVictim->SetDeathState(JUST_DIED);
 
+        if (pPlayerVictim && pPlayerVictim->IsHardcore())
+        {
+            pPlayerVictim->SetHardcoreDead(true);
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_6_1
+            pVictim->SetUInt32Value(PLAYER_SELF_RES_SPELL, 0);
+#else
+            pPlayerVictim->RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_CAN_SELF_RESURRECT);
+            pPlayerVictim->SetResurrectionSpellId(0);
+#endif
+        }
+        else
+        {
         // World of Warcraft Client Patch 1.6.0 (2005-07-12)
         // - Self-resurrection spells show their name on the button in the release spirit dialog.
 #if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_6_1
-        if (pPlayerVictim && pVictim->GetUInt32Value(PLAYER_SELF_RES_SPELL))
-            pVictim->DirectSendPublicValueUpdate(PLAYER_SELF_RES_SPELL);
+            if (pPlayerVictim && pVictim->GetUInt32Value(PLAYER_SELF_RES_SPELL))
+                pVictim->DirectSendPublicValueUpdate(PLAYER_SELF_RES_SPELL);
 #else
-        if (pPlayerVictim && pVictim->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CAN_SELF_RESURRECT))
-            pVictim->DirectSendPublicValueUpdate(PLAYER_FLAGS);
+            if (pPlayerVictim && pVictim->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CAN_SELF_RESURRECT))
+                pVictim->DirectSendPublicValueUpdate(PLAYER_FLAGS);
 #endif
+        }
         // Nostalrius: Instantly send values update for health
         pVictim->DirectSendPublicValueUpdate(UNIT_FIELD_HEALTH);
+
+        if (pPlayerVictim && pPlayerVictim->IsHardcore() && sWorld.getConfig(CONFIG_BOOL_HARDCORE_DEATH_ANNOUNCEMENT))
+        {
+            std::string zoneName = "Unknown";
+            if (AreaEntry const* area = sAreaStorage.LookupEntry<AreaEntry>(pPlayerVictim->GetAreaId()))
+                zoneName = area->Name ? area->Name : "Unknown";
+            else if (AreaEntry const* zone = sAreaStorage.LookupEntry<AreaEntry>(pPlayerVictim->GetZoneId()))
+                zoneName = zone->Name ? zone->Name : "Unknown";
+
+            std::string killerName;
+            if (this == pVictim)
+                killerName = "suicide";
+            else if (Player const* killerPlr = GetAffectingPlayer())
+                killerName = killerPlr->GetName();
+            else if (Creature const* killerCreature = ToCreature())
+                killerName = killerCreature->GetName();
+            else
+                killerName = "environmental damage";
+
+            sWorld.SendWorldText(LANG_SYSTEMMESSAGE,
+                (std::string("|cffff2020[Hardcore]|r ") + pPlayerVictim->GetName() +
+                 " (Level " + std::to_string(pPlayerVictim->GetLevel()) + ") has fallen in " +
+                 zoneName + " to " + killerName + "!").c_str());
+        }
     }
 
     pVictim->GetHostileRefManager().deleteReferences();
@@ -1179,7 +1224,49 @@ void Unit::Kill(Unit* pVictim, SpellEntry const* spellProto, bool durabilityLoss
     // remember victim PvP death for corpse type and corpse reclaim delay
     // at original death (not at SpiritOfRedemptionTalent timeout)
     if (pPlayerVictim && !damageFromSpiritOfRedemptionTalent)
+    {
         pPlayerVictim->SetPvPDeath(pPlayerTap != nullptr);
+
+        // Mak'gora duel resolution
+        if (pPlayerVictim->IsMakgora() && pPlayerVictim->m_duel && pPlayerVictim->m_duel->opponent)
+        {
+            Player* winner = pPlayerVictim->m_duel->opponent;
+            winner->AddMakgoraWin(pPlayerVictim);
+
+            std::ostringstream ss;
+            ss << "|cffff0000[Mak'gora Victory]|r " << winner->GetName() << " has SLAIN "
+               << pPlayerVictim->GetName() << " in a Mak'gora (Duel to the Death)!";
+            sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+
+            pPlayerVictim->DuelComplete(DUEL_WON);
+        }
+
+        // Bounty system kill tracking
+        Player* killerPlayer = pPlayerTap ? pPlayerTap : GetAffectingPlayer();
+        if (killerPlayer && killerPlayer != pPlayerVictim)
+        {
+            sBountyMgr.RecordPvPKill(killerPlayer, pPlayerVictim);
+
+            // If victim was a playerbot, it has a chance to place a revenge bounty on the killer
+            if (pPlayerVictim->GetPlayerbotAI() && !killerPlayer->IsFriendlyTo(pPlayerVictim))
+            {
+                if (urand(1, 100) <= 35)
+                {
+                    uint32 bountyGold = 5;
+                    if (killerPlayer->GetLevel() >= 40)
+                        bountyGold = 10;
+                    if (killerPlayer->GetLevel() >= 55)
+                        bountyGold = 25;
+
+                    uint32 streak = sBountyMgr.GetKillstreak(killerPlayer->GetObjectGuid());
+                    if (streak >= 3)
+                        bountyGold += (streak * 2);
+
+                    sBountyMgr.AddBotBounty(pPlayerVictim, killerPlayer, bountyGold);
+                }
+            }
+        }
+    }
 
     // Call KilledUnit for creatures
     if (Creature* pThisCreature = ToCreature())
@@ -3285,24 +3372,32 @@ bool Unit::AddSpellAuraHolder(SpellAuraHolder* holder)
     //sLog.Out(LOG_BASIC, LOG_LVL_DEBUG, "AddSpellAuraHolder: Adding spell %d, debuff limit affected: %d", holder->GetId(), holder->IsAffectedByVisibleSlotLimit());
     if (holder->IsAffectedByVisibleSlotLimit())
     {
+        bool const limitsRemoved = sWorld.getConfig(CONFIG_BOOL_HARDCORE_ENABLE) && sWorld.getConfig(CONFIG_BOOL_HARDCORE_DEBUFF_LIMIT_REMOVED);
+
         if (holder->IsPositive())
         {
-            uint32 positveAuras = GetVisibleAurasCount(true);
-            if (positveAuras > MAX_POSITIVE_AURAS)
+            if (!limitsRemoved)
             {
-                // We may have removed the aura we just applied ...
-                if (RemoveAuraDueToVisibleSlotLimit(holder))
-                    return false; // The holder has been deleted with 'RemoveSpellAuraHolder'
+                uint32 positveAuras = GetVisibleAurasCount(true);
+                if (positveAuras > MAX_POSITIVE_AURAS)
+                {
+                    // We may have removed the aura we just applied ...
+                    if (RemoveAuraDueToVisibleSlotLimit(holder))
+                        return false; // The holder has been deleted with 'RemoveSpellAuraHolder'
+                }
             }
         }
         else
         {
-            uint32 negativeAuras = GetVisibleAurasCount(false);
-            if (negativeAuras > sWorld.getConfig(CONFIG_UINT32_DEBUFF_LIMIT))
+            if (!limitsRemoved)
             {
-                // We may have removed the aura we just applied ...
-                if (RemoveAuraDueToVisibleSlotLimit(holder))
-                    return false; // The holder has been deleted with 'RemoveSpellAuraHolder'
+                uint32 negativeAuras = GetVisibleAurasCount(false);
+                if (negativeAuras > sWorld.getConfig(CONFIG_UINT32_DEBUFF_LIMIT))
+                {
+                    // We may have removed the aura we just applied ...
+                    if (RemoveAuraDueToVisibleSlotLimit(holder))
+                        return false; // The holder has been deleted with 'RemoveSpellAuraHolder'
+                }
             }
         }
     }
@@ -6015,6 +6110,9 @@ void Unit::SetInCombatWithAssisted(Unit* pAssisted)
             {
                 if (pThisPlayer != pAssistedPlayer)
                 {
+                    if (pThisPlayer->IsHardcore() && !pThisPlayer->IsPvP())
+                        return;
+
                     if (pAssistedPlayer->pvpInfo.inPvPCombat)
                         pThisPlayer->pvpInfo.inPvPCombat = true;
 
@@ -6048,6 +6146,11 @@ void Unit::TogglePlayerPvPFlagOnAttackVictim(Unit const* pVictim, bool touchOnly
 
             if (!pVictimPlayer || ((pThisPlayer != pVictimPlayer) && !pThisPlayer->IsInDuelWith(pVictimPlayer) && !(pThisPlayer->IsFFAPvP() && pVictimPlayer->IsFFAPvP())))
             {
+                // In Hardcore mode, attacking another player does not flag you for PvP unless already flagged via /pvp
+                // Attacking enemy faction NPCs WILL still flag you (pVictimPlayer is null when attacking NPC)
+                if (pThisPlayer->IsHardcore() && pVictimPlayer && !pThisPlayer->IsPvP())
+                    return;
+
                 pThisPlayer->pvpInfo.inPvPCombat = (pThisPlayer->pvpInfo.inPvPCombat || !touchOnly);
                 pThisPlayer->UpdatePvP(true);
 

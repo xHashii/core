@@ -60,6 +60,12 @@ void WorldSession::HandleDuelCancelledOpcode(WorldPackets::Duel::DuelCancelled c
         if (pPlayer->m_duel->opponent)
             pPlayer->m_duel->opponent->CombatStopWithPets(true);
 
+        if (pPlayer->IsMakgora())
+        {
+            pPlayer->DuelComplete(DUEL_FLED);
+            return;
+        }
+
         pPlayer->CastSpell(GetPlayer(), 7267, true);    // beg
         pPlayer->DuelComplete(DUEL_WON);
         return;

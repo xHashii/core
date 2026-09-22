@@ -584,6 +584,12 @@ void WorldSession::HandleReclaimCorpseOpcode(WorldPackets::Misc::ReclaimCorpse c
     if (!corpse)
         return;
 
+    if (GetPlayer()->IsHardcore() && GetPlayer()->IsHardcoreDead())
+    {
+        SendNotification("Hardcore characters cannot reclaim their corpse.");
+        return;
+    }
+
     // prevent resurrect before 30-sec delay after body release not finished
     if (corpse->GetGhostTime() + GetPlayer()->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP) > time(nullptr))
         return;
@@ -606,6 +612,12 @@ void WorldSession::HandleResurrectResponseOpcode(WorldPackets::Misc::ResurrectRe
 {
     if (GetPlayer()->IsAlive())
         return;
+
+    if (GetPlayer()->IsHardcore() && GetPlayer()->IsHardcoreDead())
+    {
+        GetPlayer()->ClearResurrectRequestData();
+        return;
+    }
 
     if (!packet.accept)
     {
