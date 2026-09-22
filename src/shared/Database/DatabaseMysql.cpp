@@ -115,15 +115,20 @@ bool MySQLConnection::OpenConnection(bool reconnect)
         mysql_options(mysqlInit, MYSQL_OPT_PROTOCOL, (char const*)&opt);
     }
 
+    // Do NOT touch the `max_allowed_packet` / `net_buffer_length` macros from
+    // mysql.h: they expand to (*mysql_get_parameters()->...), and that symbol is
+    // only exported by the embedded server library (libmysqld). Neither the
+    // client library bundled in dep/windows (libmysql/libmySQL 5.5) nor
+    // libmysqlclient/libmariadb export it, so using those macros compiles but
+    // fails to link with
+    //   LNK2019: unresolved external symbol mysql_get_parameters
+    // in both realmd and mangosd. The packet limit that actually matters for
+    // large statements is the *server* side `max_allowed_packet` setting;
+    // MigrationRunner reports it when a statement is rejected (error 1153).
+
     // Migration scripts CALL stored procedures. The client must accept multiple
     // result sets or a later query on this connection fails with
     // "Commands out of sync".
-#ifdef max_allowed_packet
-    // Client-side packet limit. The largest migration script is several MB.
-    if (max_allowed_packet < 64ul * 1024ul * 1024ul)
-        max_allowed_packet = 64ul * 1024ul * 1024ul;
-#endif
-
     mMysql = mysql_real_connect(mysqlInit, m_host.c_str(), m_user.c_str(),
         m_password.c_str(), m_database.c_str(), m_port, nullptr, CLIENT_MULTI_RESULTS);
 
