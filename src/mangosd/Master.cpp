@@ -466,6 +466,17 @@ bool StartDB(const std::string& name, DatabaseType& database, char const** migra
         return false;
     }
 
+    char const* fileSuffix = "world";
+    if (name == "Character")
+        fileSuffix = "characters";
+    else if (name == "Login")
+        fileSuffix = "logon";
+    else if (name == "Logs")
+        fileSuffix = "logs";
+
+    if (!database.ApplyMissingMigrations(migrations, fileSuffix))
+        return false;
+
     return database.CheckRequiredMigrations(migrations);
 }
 // Initialize connection to the databases

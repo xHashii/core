@@ -1,10 +1,10 @@
 DROP PROCEDURE IF EXISTS add_migration;
-delimiter ??
+DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
 SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20230617103841');
-IF v=0 THEN
+IF v = 0 THEN
 INSERT INTO `migrations` VALUES ('20230617103841');
 -- Add your query below.
 
@@ -116,6 +116,6 @@ DELETE FROM `gameobject` WHERE `guid` IN (25689, 25690, 25691, 25692, 25693, 256
 -- End of migration.
 END IF;
 END??
-delimiter ; 
+DELIMITER ;
 CALL add_migration();
 DROP PROCEDURE IF EXISTS add_migration;

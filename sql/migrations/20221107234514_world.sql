@@ -1,10 +1,10 @@
 DROP PROCEDURE IF EXISTS add_migration;
-delimiter ??
+DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
 SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20221107234514');
-IF v=0 THEN
+IF v = 0 THEN
 INSERT INTO `migrations` VALUES ('20221107234514');
 -- Add your query below.
 
@@ -52,6 +52,6 @@ UPDATE `creature_template` SET `spell_list_id`=95470 WHERE `entry`=9547;
 -- End of migration.
 END IF;
 END??
-delimiter ; 
+DELIMITER ;
 CALL add_migration();
 DROP PROCEDURE IF EXISTS add_migration;

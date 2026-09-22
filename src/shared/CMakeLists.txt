@@ -1,4 +1,4 @@
-﻿# Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
+# Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
 # Copyright (C) 2009-2011 MaNGOSZero <https://github.com/mangos/zero>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -97,6 +97,9 @@ set (shared_SRCS
     Config/Config.cpp
     Database/Database.cpp
     Database/DatabaseMysql.cpp
+    Database/MysqlScript.h
+    Database/MysqlScript.cpp
+    Database/MigrationRunner.cpp
     Database/DBCFileLoader.cpp
     Database/Field.cpp
     Database/QueryResultMysql.cpp
@@ -238,6 +241,10 @@ add_library(shared STATIC
   ${shared_SRCS}
 )
 mangos_target_flags(shared)
+
+# So a rebuilt binary can find sql/migrations even when launched from bin/Release.
+string(REPLACE "\\" "/" MANGOS_SOURCE_DIR_FWD "${CMAKE_SOURCE_DIR}")
+target_compile_definitions(shared PRIVATE "MANGOS_SOURCE_DIR=\"${MANGOS_SOURCE_DIR_FWD}\"")
 
 target_include_directories(shared PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}

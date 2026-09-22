@@ -1,10 +1,10 @@
 DROP PROCEDURE IF EXISTS add_migration;
-delimiter ??
+DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
 SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20211001123303');
-IF v=0 THEN
+IF v = 0 THEN
 INSERT INTO `migrations` VALUES ('20211001123303');
 -- Add your query below.
 
@@ -20,6 +20,6 @@ INSERT INTO `mangos_string` (`entry`, `content_default`, `content_loc1`, `conten
 -- End of migration.
 END IF;
 END??
-delimiter ; 
+DELIMITER ;
 CALL add_migration();
 DROP PROCEDURE IF EXISTS add_migration;

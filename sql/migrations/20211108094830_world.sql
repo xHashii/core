@@ -1,10 +1,10 @@
 DROP PROCEDURE IF EXISTS add_migration;
-delimiter ??
+DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
 SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20211108094830');
-IF v=0 THEN
+IF v = 0 THEN
 INSERT INTO `migrations` VALUES ('20211108094830');
 -- Add your query below.
 
@@ -186,6 +186,6 @@ UPDATE `gossip_menu_option` SET `action_menu_id`=6076 WHERE `action_menu_id`=502
 -- End of migration.
 END IF;
 END??
-delimiter ; 
+DELIMITER ;
 CALL add_migration();
 DROP PROCEDURE IF EXISTS add_migration;

@@ -1,10 +1,10 @@
 DROP PROCEDURE IF EXISTS add_migration;
-delimiter ??
+DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
 SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20230708060723');
-IF v=0 THEN
+IF v = 0 THEN
 INSERT INTO `migrations` VALUES ('20230708060723');
 -- Add your query below.
 
@@ -28,6 +28,6 @@ INSERT INTO `creature` (`guid`, `id`, `id2`, `id3`, `id4`, `id5`, `map`, `positi
 -- End of migration.
 END IF;
 END??
-delimiter ; 
+DELIMITER ;
 CALL add_migration();
 DROP PROCEDURE IF EXISTS add_migration;

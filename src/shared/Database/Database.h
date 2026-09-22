@@ -59,6 +59,11 @@ class SqlConnection
         //public methods for making requests
         virtual bool Execute(std::string const& sql) = 0;
 
+        // Execute one server statement without the startup asserts in Execute().
+        // Used for migration scripts, which are allowed to fail and must drain
+        // extra result sets produced by CALL.
+        virtual bool ExecuteScript(std::string const& sql, std::string& error);
+
         //escape string generation
         virtual unsigned long escape_string(char* to, char const* from, unsigned long length) { strncpy(to,from,length); return length; }
 
@@ -159,6 +164,8 @@ class Database
             SqlConnection::Lock guard(m_pAsyncConn);
             return guard->Execute(sql);
         }
+
+        bool DirectExecuteScript(std::string const& sql, std::string& error);
 
         bool DirectPExecute(char const* format,...) ATTR_PRINTF(2,3);
 
@@ -264,6 +271,9 @@ class Database
         void ProcessResultQueue(uint32 maxTime = 0);
 
         bool CheckRequiredMigrations(char const** migrations);
+        // Apply required migration scripts that are not yet recorded. fileSuffix
+        // is the sql/migrations filename suffix: world, characters, logon, logs.
+        bool ApplyMissingMigrations(char const** migrations, char const* fileSuffix);
         uint32 GetPingIntervalMs() { return m_pingIntervalMs; }
 
         //function to ping database connections

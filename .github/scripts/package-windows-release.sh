@@ -42,6 +42,11 @@ fi
 cp -f "$dep_dir/libmySQL.dll" "$release_dir/libmySQL.dll"
 cp -f "$dep_dir/libeay32.dll" "$release_dir/libeay32.dll"
 
+# mangosd applies sql/migrations from beside the executable on startup.
+mkdir -p "$release_dir/sql"
+rm -rf "$release_dir/sql/migrations"
+cp -a "$PWD/sql/migrations" "$release_dir/sql/migrations"
+
 rm -f "$archive_path"
 
 (

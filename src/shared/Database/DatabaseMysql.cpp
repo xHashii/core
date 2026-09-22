@@ -29,6 +29,26 @@
 #include "DatabaseEnv.h"
 #include "Timer.h"
 
+#include <limits>
+#include <string>
+
+namespace
+{
+// CLIENT_MULTI_RESULTS can leave additional result sets pending. Consume them
+// so the next query on this connection is not rejected as out of sync.
+void DrainExtraResults(MYSQL* mysql)
+{
+    while (mysql_more_results(mysql))
+    {
+        if (mysql_next_result(mysql) != 0)
+            break;
+
+        if (MYSQL_RES* result = mysql_store_result(mysql))
+            mysql_free_result(result);
+    }
+}
+}
+
 size_t DatabaseMysql::db_count = 0;
 
 void DatabaseMysql::ThreadStart()
@@ -95,8 +115,17 @@ bool MySQLConnection::OpenConnection(bool reconnect)
         mysql_options(mysqlInit, MYSQL_OPT_PROTOCOL, (char const*)&opt);
     }
 
+    // Migration scripts CALL stored procedures. The client must accept multiple
+    // result sets or a later query on this connection fails with
+    // "Commands out of sync".
+#ifdef max_allowed_packet
+    // Client-side packet limit. The largest migration script is several MB.
+    if (max_allowed_packet < 64ul * 1024ul * 1024ul)
+        max_allowed_packet = 64ul * 1024ul * 1024ul;
+#endif
+
     mMysql = mysql_real_connect(mysqlInit, m_host.c_str(), m_user.c_str(),
-        m_password.c_str(), m_database.c_str(), m_port, nullptr, 0);
+        m_password.c_str(), m_database.c_str(), m_port, nullptr, CLIENT_MULTI_RESULTS);
 
     if (mMysql)
     {
@@ -220,6 +249,7 @@ bool MySQLConnection::_Query(std::string const& sql, MYSQL_RES** pResult, MYSQL_
     *pResult = mysql_store_result(mMysql);
     *pRowCount = mysql_affected_rows(mMysql);
     *pFieldCount = mysql_field_count(mMysql);
+    DrainExtraResults(mMysql);
 
     if (!*pResult)
         return false;
@@ -293,6 +323,60 @@ bool MySQLConnection::Execute(std::string const& sql)
         DEBUG_FILTER_LOG(LOG_FILTER_SQL_TEXT, "[%u ms] SQL: %s", WorldTimer::getMSTimeDiff(_s,WorldTimer::getMSTime()), sql.c_str());
     }
 
+    DrainExtraResults(mMysql);
+    return true;
+}
+
+bool MySQLConnection::ExecuteScript(std::string const& sql, std::string& error)
+{
+    if (!mMysql && !Reconnect())
+    {
+        error = "MySQL connection is not available";
+        return false;
+    }
+
+    // Do not route this through Execute()/HandleMySQLError(). Migration SQL is
+    // expected to be able to fail, and a parse error must not assert.
+    if (sql.size() > static_cast<size_t>((std::numeric_limits<unsigned long>::max)()))
+    {
+        error = "SQL statement is too large to send";
+        return false;
+    }
+
+    if (mysql_real_query(mMysql, sql.c_str(), static_cast<unsigned long>(sql.size())))
+    {
+        unsigned int const errNo = mysql_errno(mMysql);
+        error = "[" + std::to_string(errNo) + "] " + mysql_error(mMysql);
+        // An empty statement (comments only) is not a migration failure.
+        if (errNo == ER_EMPTY_QUERY)
+        {
+            error.clear();
+            return true;
+        }
+        return false;
+    }
+
+    do
+    {
+        MYSQL_RES* result = mysql_store_result(mMysql);
+        if (result)
+            mysql_free_result(result);
+        else if (mysql_field_count(mMysql) != 0)
+        {
+            error = std::string("[") + std::to_string(mysql_errno(mMysql)) + "] " + mysql_error(mMysql);
+            return false;
+        }
+
+        int const status = mysql_next_result(mMysql);
+        if (status < 0)
+            break;
+        if (status > 0)
+        {
+            error = std::string("[") + std::to_string(mysql_errno(mMysql)) + "] " + mysql_error(mMysql);
+            return false;
+        }
+    } while (true);
+
     return true;
 }
 
@@ -308,6 +392,8 @@ bool MySQLConnection::_TransactionCmd(std::string const& sql)
     {
         DEBUG_FILTER_LOG(LOG_FILTER_SQL_TEXT, "SQL: %s", sql.c_str());
     }
+
+    DrainExtraResults(mMysql);
     return true;
 }
 

@@ -8,6 +8,17 @@ ConfVersion=2026042601
 ###################################################################################################################
 # REALMD SETTINGS
 #
+#    Database.AutoApplyMigrations
+#        Apply missing sql/migrations scripts on startup instead of exiting.
+#        Default: 1 (apply)
+#                 0 (only report missing migrations and exit)
+#
+#    Database.MigrationsDir
+#        Folder that contains the core migration scripts (the sql/migrations
+#        directory, or the repository root). Leave unset to search next to the
+#        executable, the config file, the working directory, and parent folders.
+#        Default: unset
+#
 #    LoginDatabaseInfo
 #        Database connection settings for the realm server.
 #        Default: hostname;port;username;password;database
@@ -158,6 +169,7 @@ ConfVersion=2026042601
 ###################################################################################################################
 
 LoginDatabaseInfo = "127.0.0.1;3306;mangos;mangos;realmd"
+Database.AutoApplyMigrations = 1
 LogsDir = ""
 PatchesDir = "./patches"
 MaxPingTime = 30

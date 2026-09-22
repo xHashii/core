@@ -1,11 +1,11 @@
 SET NAMES utf8;
 DROP PROCEDURE IF EXISTS add_migration;
-delimiter ??
+DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
 SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20221107183131');
-IF v=0 THEN
+IF v = 0 THEN
 INSERT INTO `migrations` VALUES ('20221107183131');
 -- Add your query below.
 
@@ -17638,6 +17638,6 @@ INSERT INTO `locales_item` (`entry`, `name_loc1`, `name_loc2`, `name_loc3`, `nam
 -- End of migration.
 END IF;
 END??
-delimiter ; 
+DELIMITER ;
 CALL add_migration();
 DROP PROCEDURE IF EXISTS add_migration;
