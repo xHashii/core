@@ -1273,7 +1273,6 @@ void World::LoadConfigSettings(bool reload)
     // Hardcore Mode
     setConfig(CONFIG_BOOL_HARDCORE_ENABLE, "Hardcore.Enable", true);
     setConfig(CONFIG_UINT32_HARDCORE_MODE, "Hardcore.Mode", 0);
-    setConfig(CONFIG_BOOL_HARDCORE_ALLOW_SPIRIT_REVIVE, "Hardcore.AllowReviveAtSpiritHealer", true);
     setConfig(CONFIG_BOOL_HARDCORE_DEBUFF_LIMIT_REMOVED, "Hardcore.DebuffLimitRemoved", true);
     setConfig(CONFIG_BOOL_HARDCORE_DISABLE_BATTLEGROUNDS, "Hardcore.DisableBattlegrounds", true);
     setConfig(CONFIG_BOOL_HARDCORE_PALADIN_RESTRICTION, "Hardcore.PaladinRestriction", true);

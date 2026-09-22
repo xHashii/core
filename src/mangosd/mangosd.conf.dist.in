@@ -3389,11 +3389,13 @@ DynamicRespawn.PlayersMaxLevelDiff = 0
 #        1 - Realm-wide Hardcore: All player characters start as Hardcore by default.
 #        Default: 0 (Opt-In)
 #
-#    Hardcore.AllowReviveAtSpiritHealer
-#        Allow fallen Hardcore characters to forfeit Hardcore mode at a Spirit Healer or Hardcore NPC
-#        and resurrect as a normal (softcore) character to continue playing.
-#        Default: 1 - Enabled (Fallen heroes can forfeit Hardcore to revive as normal characters)
-#                 0 - Disabled (Strict permanent death lock: cannot forfeit to resurrect)
+#    Permanent death
+#        Death of a Hardcore character (normal or Solo Self-Found) is final. A fallen hero cannot be
+#        revived by Spirit Healers / Spirit Guides, corpse reclaim, resurrection spells cast by others,
+#        self-resurrection (Soulstone, Reincarnation, ...) or the Hardcore NPC; the Spirit Healer does
+#        not even offer the option. The only choices left are to remain a ghost or to delete the
+#        character. Game Masters may still use ".hardcore revive <name>".
+#        (The former "Hardcore.AllowReviveAtSpiritHealer" option has been removed and is ignored.)
 #
 #    Hardcore.DebuffLimitRemoved
 #        Remove the 16-debuff and 32-buff limits on Hardcore characters.
@@ -3420,7 +3422,6 @@ DynamicRespawn.PlayersMaxLevelDiff = 0
 
 Hardcore.Enable = 1
 Hardcore.Mode = 0
-Hardcore.AllowReviveAtSpiritHealer = 1
 Hardcore.DebuffLimitRemoved = 1
 Hardcore.DisableBattlegrounds = 1
 Hardcore.PaladinRestriction = 1

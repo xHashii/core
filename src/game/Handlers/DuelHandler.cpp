@@ -35,7 +35,13 @@ void WorldSession::HandleDuelAcceptedOpcode(WorldPackets::Duel::DuelAccepted con
     Player* pl       = GetPlayer();
     Player* plTarget = pl->m_duel->opponent;
 
-    if (pl == pl->m_duel->initiator || !plTarget || !plTarget->m_duel || pl == plTarget || pl->m_duel->startTime != 0 || plTarget->m_duel->startTime != 0)
+    // A duel that was already declined/cancelled stays allocated (finished = true) until the
+    // next Player::Update; accepting it would start a countdown for a dead duel.
+    if (pl->m_duel->finished)
+        return;
+
+    if (pl == pl->m_duel->initiator || !plTarget || !plTarget->m_duel || plTarget->m_duel->finished || pl == plTarget ||
+        pl->m_duel->startTime != 0 || plTarget->m_duel->startTime != 0 || pl->m_duel->startTimer != 0 || plTarget->m_duel->startTimer != 0)
         return;
 
     time_t now = time(nullptr);
@@ -49,8 +55,8 @@ void WorldSession::HandleDuelAcceptedOpcode(WorldPackets::Duel::DuelAccepted con
 void WorldSession::HandleDuelCancelledOpcode(WorldPackets::Duel::DuelCancelled const& /*packet*/)
 {
     auto pPlayer = GetPlayer();
-    // no duel requested
-    if (!pPlayer->m_duel)
+    // no duel requested (or already over)
+    if (!pPlayer->m_duel || pPlayer->m_duel->finished)
         return;
 
     // player surrendered in a duel using /forfeit

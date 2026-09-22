@@ -1252,7 +1252,9 @@ bool GossipHello_HardcoreNPC(Player* player, Creature* creature)
 
     if (isHardcore && isDead)
     {
-        player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_CHAT, "I accept my mortality. Forfeit Hardcore mode and resurrect as a normal character.", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_FORFEIT_RES, "Are you sure? This will permanently remove Hardcore status from this character and return you to life as a normal character.", false);
+        // Death is permanent: no forfeit-and-resurrect option. A fallen hero may only
+        // wander Azeroth as a ghost or delete the character.
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Is there truly no way back?", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_INFO_DEATH);
         player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Check my Character Status", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_STATUS);
         player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "I shall embrace my eternal rest. (Close)", GOSSIP_SENDER_MAIN, HC_GOSSIP_ACTION_CLOSE);
     }
@@ -1339,6 +1341,14 @@ bool GossipSelect_HardcoreNPC(Player* player, Creature* creature, uint32 sender,
 
         case HC_GOSSIP_ACTION_FORFEIT_HC:
         {
+            // Only a living hero may walk away from the challenge. Dead is dead.
+            if (!player->IsAlive() || player->IsHardcoreDead())
+            {
+                player->GetSession()->SendNotification("The dead cannot forfeit. Your Hardcore journey has ended.");
+                player->CLOSE_GOSSIP_MENU();
+                return true;
+            }
+
             player->SetHardcore(false);
             player->SetHardcoreSSF(false);
             player->SetHardcoreDead(false);
@@ -1350,19 +1360,9 @@ bool GossipSelect_HardcoreNPC(Player* player, Creature* creature, uint32 sender,
 
         case HC_GOSSIP_ACTION_FORFEIT_RES:
         {
-            player->SetHardcore(false);
-            player->SetHardcoreSSF(false);
-            player->SetHardcoreDead(false);
-
-            if (!player->IsAlive())
-            {
-                player->ResurrectPlayer(0.5f, true);
-                player->DurabilityLossAll(0.25f, true);
-                player->SpawnCorpseBones();
-            }
-
-            player->GetSession()->SendNotification("You have forfeited Hardcore mode and returned to life!");
-            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r You have forfeited Hardcore mode and returned to life as a normal character.");
+            // Legacy action id: reviving a fallen Hardcore character is not possible anymore.
+            player->GetSession()->SendNotification("There is no way back. Hardcore death is permanent.");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore]|r Your character has fallen. You may remain a ghost or delete the character - there is no resurrection.");
             player->CLOSE_GOSSIP_MENU();
             break;
         }
@@ -1394,7 +1394,7 @@ bool GossipSelect_HardcoreNPC(Player* player, Creature* creature, uint32 sender,
 
         case HC_GOSSIP_ACTION_INFO_DEATH:
         {
-            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore Info]|r Permanent Death: If your character dies, resurrection spells, corpse retrieval, and spirit healers cannot revive you. However, you may speak to this NPC or Spirit Healer to forfeit Hardcore mode and continue as a normal character.");
+            ChatHandler(player).PSendSysMessage("|cffff0000[Hardcore Info]|r Permanent Death: If your character dies, there is no way back. Resurrection spells, self-resurrection (Soulstone, Reincarnation), corpse retrieval, Spirit Healers and this NPC cannot revive you. A fallen hero may only remain a ghost or delete the character.");
             GossipHello_HardcoreNPC(player, creature);
             break;
         }

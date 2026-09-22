@@ -358,7 +358,11 @@ void WorldSession::HandleGossipHelloOpcode(WorldPackets::Npc::GossipHello const&
     if (!pCreature->HasExtraFlag(CREATURE_FLAG_EXTRA_NO_MOVEMENT_PAUSE))
         pCreature->PauseOutOfCombatMovement();
 
-    if (pCreature->IsSpiritGuide())
+    // Hardcore: a fallen hero has no business with spirit services. Tell them plainly;
+    // the "Return me to life" option itself is not offered (Player::PrepareGossipMenu).
+    if (pCreature->IsSpiritService() && _player->IsHardcore() && _player->IsHardcoreDead())
+        SendNotification("Spirit Healers cannot help a fallen Hardcore hero. Death is permanent.");
+    else if (pCreature->IsSpiritGuide())
         pCreature->SendAreaSpiritHealerQueryOpcode(_player);
 
     if (!sScriptMgr.OnGossipHello(_player, pCreature))
@@ -423,20 +427,13 @@ void WorldSession::HandleSpiritHealerActivateOpcode(WorldPackets::Npc::SpiritHea
         return;
     }
 
+    // Hardcore: death is permanent. A fallen hero (normal or Solo Self-Found) cannot be
+    // revived by a Spirit Healer - the only options left are to remain a ghost or to delete
+    // the character. (The option is not even offered in the gossip, this is the safety net.)
     if (_player->IsHardcore() && _player->IsHardcoreDead())
     {
-        if (sWorld.getConfig(CONFIG_BOOL_HARDCORE_ALLOW_SPIRIT_REVIVE))
-        {
-            _player->SetHardcore(false);
-            _player->SetHardcoreSSF(false);
-            _player->SetHardcoreDead(false);
-            SendNotification("You have forfeited Hardcore mode and returned to life as a normal character.");
-        }
-        else
-        {
-            SendNotification("Spirit Healers cannot resurrect Hardcore characters.");
-            return;
-        }
+        SendNotification("Spirit Healers cannot help a fallen Hardcore hero. Death is permanent.");
+        return;
     }
 
     GetPlayer()->InterruptSpellsWithChannelFlags(AURA_INTERRUPT_INTERACTING_CANCELS);
@@ -446,20 +443,11 @@ void WorldSession::HandleSpiritHealerActivateOpcode(WorldPackets::Npc::SpiritHea
 
 void WorldSession::SendSpiritResurrect()
 {
+    // Hardcore: permanent death (see HandleSpiritHealerActivateOpcode)
     if (_player->IsHardcore() && _player->IsHardcoreDead())
     {
-        if (sWorld.getConfig(CONFIG_BOOL_HARDCORE_ALLOW_SPIRIT_REVIVE))
-        {
-            _player->SetHardcore(false);
-            _player->SetHardcoreSSF(false);
-            _player->SetHardcoreDead(false);
-            SendNotification("You have forfeited Hardcore mode and returned to life as a normal character.");
-        }
-        else
-        {
-            SendNotification("Spirit Healers cannot resurrect Hardcore characters.");
-            return;
-        }
+        SendNotification("Spirit Healers cannot help a fallen Hardcore hero. Death is permanent.");
+        return;
     }
 
     _player->ResurrectPlayer(0.5f, true);

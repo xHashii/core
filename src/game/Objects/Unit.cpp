@@ -1227,18 +1227,39 @@ void Unit::Kill(Unit* pVictim, SpellEntry const* spellProto, bool durabilityLoss
     {
         pPlayerVictim->SetPvPDeath(pPlayerTap != nullptr);
 
-        // Mak'gora duel resolution
-        if (pPlayerVictim->IsMakgora() && pPlayerVictim->m_duel && pPlayerVictim->m_duel->opponent)
+        // Mak'gora duel resolution: the loser really died (Unit::DealDamage does not apply
+        // the 1 HP duel cap to Mak'gora duels), the survivor is the winner.
+        if (pPlayerVictim->IsMakgora() && !pPlayerVictim->m_duel->finished && pPlayerVictim->m_duel->opponent)
         {
             Player* winner = pPlayerVictim->m_duel->opponent;
-            winner->AddMakgoraWin(pPlayerVictim);
 
-            std::ostringstream ss;
-            ss << "|cffff0000[Mak'gora Victory]|r " << winner->GetName() << " has SLAIN "
-               << pPlayerVictim->GetName() << " in a Mak'gora (Duel to the Death)!";
-            sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+            if (pPlayerVictim->m_duel->startTime != 0)
+            {
+                winner->AddMakgoraWin(pPlayerVictim);
 
-            pPlayerVictim->DuelComplete(DUEL_WON);
+                // killing blow by the opponent (or their pet / guardian)? otherwise the loser
+                // fell to something else mid-fight - the survivor still wins the Mak'gora.
+                bool const slainByWinner = (this == winner) || (GetCharmerOrOwnerGuid() == winner->GetObjectGuid());
+
+                std::ostringstream ss;
+                ss << "|cffff0000[Mak'gora Victory]|r " << winner->GetName();
+                if (slainByWinner)
+                    ss << " has SLAIN " << pPlayerVictim->GetName() << " in a Mak'gora (Duel to the Death)!";
+                else
+                    ss << " wins the Mak'gora - " << pPlayerVictim->GetName() << " perished during the duel to the death!";
+                if (pPlayerVictim->IsHardcore())
+                    ss << " " << pPlayerVictim->GetName() << "'s Hardcore journey has ended forever.";
+                sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+
+                pPlayerVictim->DuelComplete(DUEL_WON);
+            }
+            else
+            {
+                // Died (to something else) while the Mak'gora request/countdown was still pending.
+                pPlayerVictim->DuelComplete(DUEL_INTERRUPTED);
+            }
+
+            winner->CombatStopWithPets(true);
         }
 
         // Bounty system kill tracking
