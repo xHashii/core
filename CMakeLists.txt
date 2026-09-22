@@ -286,6 +286,13 @@ message(STATUS "MaNGOS CXX flags      : ${MANGOS_CXX_FLAGS}")
 add_subdirectory(src)
 add_subdirectory(dep)
 
+# Startup applies missing rows from this folder. Install it beside the binaries
+# (bin/sql/migrations, or next to the exe on Windows) so packaged servers can
+# find it without the source tree.
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/sql/migrations"
+        DESTINATION "${BIN_DIR}/sql"
+        FILES_MATCHING PATTERN "*.sql")
+
 if (BUILD_EXTRACTORS OR BUILD_REALMMERGE)
     add_subdirectory(contrib)
 endif()

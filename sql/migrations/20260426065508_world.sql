@@ -3,9 +3,9 @@ DELIMITER ??
 CREATE PROCEDURE `add_migration`()
 BEGIN
 DECLARE v INT DEFAULT 1;
-SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`=20260426065508);
+SET v = (SELECT COUNT(*) FROM `migrations` WHERE `id`='20260426065508');
 IF v = 0 THEN
-INSERT INTO `migrations` VALUES (20260426065508);
+INSERT INTO `migrations` VALUES ('20260426065508');
 -- Add your query below.
 
 SET @CGUID := 18809;

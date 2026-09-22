@@ -122,6 +122,12 @@ bool SqlConnection::Initialize(std::string const& infoString)
     return OpenConnection(false);
 }
 
+bool SqlConnection::ExecuteScript(std::string const& /*sql*/, std::string& error)
+{
+    error = "ExecuteScript is not implemented for this connection";
+    return false;
+}
+
 bool SqlConnection::ExecuteStmt(int nIndex, SqlStmtParameters const& id)
 {
     if(nIndex == -1)
@@ -461,6 +467,18 @@ bool Database::PExecute(char const* format,...)
     }
 
     return Execute(szQuery);
+}
+
+bool Database::DirectExecuteScript(std::string const& sql, std::string& error)
+{
+    if (!m_pAsyncConn)
+    {
+        error = "No database connection";
+        return false;
+    }
+
+    SqlConnection::Lock guard(m_pAsyncConn);
+    return guard->ExecuteScript(sql, error);
 }
 
 bool Database::DirectPExecute(char const* format,...)

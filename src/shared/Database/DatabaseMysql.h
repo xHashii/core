@@ -86,6 +86,7 @@ class MySQLConnection : public SqlConnection
         std::unique_ptr<QueryResult> Query(std::string const& sql) override;
         std::unique_ptr<QueryNamedResult> QueryNamed(std::string const& sql) override;
         bool Execute(std::string const& sql) override;
+        bool ExecuteScript(std::string const& sql, std::string& error) override;
 
         unsigned long escape_string(char* to, char const* from, unsigned long length) override;
 

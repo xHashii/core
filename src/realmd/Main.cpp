@@ -450,7 +450,8 @@ bool StartDB()
         return false;
     }
 
-    if (!LoginDatabase.CheckRequiredMigrations(MIGRATIONS_LOGON))
+    if (!LoginDatabase.ApplyMissingMigrations(MIGRATIONS_LOGON, "logon") ||
+        !LoginDatabase.CheckRequiredMigrations(MIGRATIONS_LOGON))
     {
         // Wait for already started DB delay threads to end
         LoginDatabase.HaltDelayThread();

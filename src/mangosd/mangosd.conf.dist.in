@@ -56,6 +56,17 @@ ConfVersion=2025040601
 #        The interval in seconds to check the reachability of the database
 #        Default: 600 (10 min)
 #
+#    Database.AutoApplyMigrations
+#        Apply missing sql/migrations scripts on startup instead of exiting.
+#        Default: 1 (apply)
+#                 0 (only report missing migrations and exit)
+#
+#    Database.MigrationsDir
+#        Folder that contains the core migration scripts (the sql/migrations
+#        directory, or the repository root). Leave unset to search next to the
+#        executable, the config file, the working directory, and parent folders.
+#        Default: unset
+#
 #    WorldServerPort
 #        Port on which the server will listen
 #
@@ -84,6 +95,7 @@ LogsDatabase.Info = "127.0.0.1;3306;mangos;mangos;logs"
 LogsDatabase.Connections = 1
 LogsDatabase.WorkerThreads = 1
 Database.AliveCheckInternal = 600
+Database.AutoApplyMigrations = 1
 WorldServerPort = 8085
 BindIP = "0.0.0.0"
 
