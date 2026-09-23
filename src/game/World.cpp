@@ -1281,7 +1281,7 @@ void World::LoadConfigSettings(bool reload)
     // 20-man raid conversion (shared lockout, normal loot, NPC entrance toggle)
     setConfig(CONFIG_BOOL_RAID_20MAN_ENABLE,       "Raid.20Man.Enable", true);
     setConfig(CONFIG_BOOL_RAID_20MAN_PATCH_GATING, "Raid.20Man.PatchGating", true);
-    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH,      "Raid.20Man.Rate.Health", 0.5f);
+    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH,      "Raid.20Man.Rate.Health", 0.8f);
     setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE,      "Raid.20Man.Rate.Damage", 1.0f);
     setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE, "Raid.20Man.Rate.SpellDamage", 1.0f);
 

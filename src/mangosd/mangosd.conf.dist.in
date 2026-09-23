@@ -3447,7 +3447,7 @@ Hardcore.DeathAnnouncement = 1
 #    Raid.20Man.Rate.Health
 #        Health multiplier applied to creatures inside a 20-man instance
 #        (stacks with Rate.Creature.*.HP).
-#        Default: 0.5
+#        Default: 0.8
 #
 #    Raid.20Man.Rate.Damage
 #        Melee/ranged damage multiplier in 20-man.
@@ -3461,7 +3461,7 @@ Hardcore.DeathAnnouncement = 1
 
 Raid.20Man.Enable = 1
 Raid.20Man.PatchGating = 1
-Raid.20Man.Rate.Health = 0.5
+Raid.20Man.Rate.Health = 0.8
 Raid.20Man.Rate.Damage = 1.0
 Raid.20Man.Rate.SpellDamage = 1.0
 
