@@ -3438,10 +3438,9 @@ Hardcore.DeathAnnouncement = 1
 #                 0 - Disabled (all raids are 40-man only)
 #
 #    Raid.20Man.PatchGating
-#        When enabled the 20-man option is only offered if the realm's WowPatch
-#        has reached that raid's original release patch (MC/Ony 1.2, BWL 1.6,
-#        AQ40 1.9, Naxx 1.11). When disabled every convertible raid can be
-#        toggled to 20-man regardless of patch.
+#        Simple patch check: if the patch for a raid has not been reached,
+#        the NPC and raid are not available for 20- or 40-man. At or past
+#        the patch both are available (MC/Ony 1.2, BWL 1.6, AQ40 1.9, Naxx 1.11).
 #        Default: 1 - Enabled
 #                 0 - Disabled
 #
@@ -3452,19 +3451,19 @@ Hardcore.DeathAnnouncement = 1
 #
 #    Raid.20Man.Rate.Damage
 #        Melee/ranged damage multiplier in 20-man.
-#        Default: 0.6
+#        Default: 1.0
 #
 #    Raid.20Man.Rate.SpellDamage
 #        Spell-damage multiplier in 20-man.
-#        Default: 0.6
+#        Default: 1.0
 #
 ###################################################################################################################
 
 Raid.20Man.Enable = 1
 Raid.20Man.PatchGating = 1
 Raid.20Man.Rate.Health = 0.5
-Raid.20Man.Rate.Damage = 0.6
-Raid.20Man.Rate.SpellDamage = 0.6
+Raid.20Man.Rate.Damage = 1.0
+Raid.20Man.Rate.SpellDamage = 1.0
 
 ###################################################################################################################
 # BOUNTY SYSTEM

@@ -1282,8 +1282,8 @@ void World::LoadConfigSettings(bool reload)
     setConfig(CONFIG_BOOL_RAID_20MAN_ENABLE,       "Raid.20Man.Enable", true);
     setConfig(CONFIG_BOOL_RAID_20MAN_PATCH_GATING, "Raid.20Man.PatchGating", true);
     setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH,      "Raid.20Man.Rate.Health", 0.5f);
-    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE,      "Raid.20Man.Rate.Damage", 0.6f);
-    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE, "Raid.20Man.Rate.SpellDamage", 0.6f);
+    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE,      "Raid.20Man.Rate.Damage", 1.0f);
+    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE, "Raid.20Man.Rate.SpellDamage", 1.0f);
 
     // Bounty System
     setConfigMinMax(CONFIG_UINT32_BOUNTY_ANNOUNCE_MODE, "Bounty.Announce.Mode", BOUNTY_ANNOUNCE_REAL_PLAYERS, BOUNTY_ANNOUNCE_NONE, BOUNTY_ANNOUNCE_ALL);
