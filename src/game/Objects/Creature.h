@@ -251,9 +251,12 @@ class Creature : public Unit
         float GetWeaponBasedAuraModifier(WeaponAttackType attType, AuraType auraType) const final;
         uint32 GetCurrentEquipmentId() const { return m_equipmentId; }
 
-        static float _GetHealthMod(int32 rank);             // Get custom factor to scale health (default 1, CONFIG_FLOAT_RATE_CREATURE_*_HP)
-        static float _GetDamageMod(int32 rank);             // Get custom factor to scale damage (default 1, CONFIG_FLOAT_RATE_*_DAMAGE)
-        static float _GetSpellDamageMod(int32 rank);        // Get custom factor to scale spell damage (default 1, CONFIG_FLOAT_RATE_*_SPELLDAMAGE)
+        // Custom factors to scale health / damage / spell damage (default 1, CONFIG_FLOAT_RATE_CREATURE_*).
+        // Non-static: they also apply the 20-man raid mode multipliers of the map the creature is in.
+        float _GetHealthMod(int32 rank) const;              // CONFIG_FLOAT_RATE_CREATURE_*_HP
+        float _GetDamageMod(int32 rank) const;              // CONFIG_FLOAT_RATE_*_DAMAGE
+        float _GetSpellDamageMod(int32 rank) const;         // CONFIG_FLOAT_RATE_*_SPELLDAMAGE
+        float _GetRaidModeMod(uint32 configIndex) const;    // 20-man raid scaling for current map (1.0 otherwise)
 
         VendorItemData const* GetVendorItems() const;
         VendorItemData const* GetVendorTemplateItems() const;

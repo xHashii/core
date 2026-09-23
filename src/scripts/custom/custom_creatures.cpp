@@ -28,6 +28,7 @@
 #include "Chat.h"
 #include "SharedDefines.h"
 #include "ObjectMgr.h"
+#include "Group.h"
 #include <ctime>
 #include <sstream>
 
