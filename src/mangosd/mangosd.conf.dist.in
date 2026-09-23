@@ -3428,6 +3428,45 @@ Hardcore.PaladinRestriction = 1
 Hardcore.DeathAnnouncement = 1
 
 ###################################################################################################################
+# 20-MAN RAID CONVERSION (shared lockout, normal loot, NPC toggle at entrance)
+#
+#    Raid.20Man.Enable
+#        Master switch for the 20-man conversion of 40-man raids. When enabled a
+#        \"Raid Herald\" gossip NPC appears in front of each raid entrance and can
+#        convert a fresh instance to 20-man before anyone pulls a boss.
+#        Default: 1 - Enabled
+#                 0 - Disabled (all raids are 40-man only)
+#
+#    Raid.20Man.PatchGating
+#        When enabled the 20-man option is only offered if the realm's WowPatch
+#        has reached that raid's original release patch (MC/Ony 1.2, BWL 1.6,
+#        AQ40 1.9, Naxx 1.11). When disabled every convertible raid can be
+#        toggled to 20-man regardless of patch.
+#        Default: 1 - Enabled
+#                 0 - Disabled
+#
+#    Raid.20Man.Rate.Health
+#        Health multiplier applied to creatures inside a 20-man instance
+#        (stacks with Rate.Creature.*.HP).
+#        Default: 0.5
+#
+#    Raid.20Man.Rate.Damage
+#        Melee/ranged damage multiplier in 20-man.
+#        Default: 0.6
+#
+#    Raid.20Man.Rate.SpellDamage
+#        Spell-damage multiplier in 20-man.
+#        Default: 0.6
+#
+###################################################################################################################
+
+Raid.20Man.Enable = 1
+Raid.20Man.PatchGating = 1
+Raid.20Man.Rate.Health = 0.5
+Raid.20Man.Rate.Damage = 0.6
+Raid.20Man.Rate.SpellDamage = 0.6
+
+###################################################################################################################
 # BOUNTY SYSTEM
 #
 #    Bounty.Announce.Mode

@@ -20,6 +20,13 @@
 #include "Chat.h"
 #include "World.h"
 #include "BountyMgr.h"
+#include "Maps/RaidMode.h"
+#include "MapManager.h"
+#include "DBCStores.h"
+#include "SQLStorages.h"
+#include "MapPersistentStateMgr.h"
+#include "Chat.h"
+#include "SharedDefines.h"
 #include "ObjectMgr.h"
 #include <ctime>
 #include <sstream>
@@ -1791,6 +1798,341 @@ bool GOGossipSelect_BountyBoard(Player* player, GameObject* go, uint32 sender, u
     return true;
 }
 
+
+// =========================================================================
+// RAID HERALD - 20-man <-> 40-man conversion (Phase 0)
+// Shared lockout, normal loot. Raid-leader only, before pull.
+// Place one NPC in front of each raid entrance: MC 409, Onyxia 249, BWL 469, AQ40 531, Naxx 533.
+// =========================================================================
+
+enum RaidHeraldGossip
+{
+    HERALD_ACTION_STATUS       = 3100,
+    HERALD_ACTION_SET_20       = 3101,
+    HERALD_ACTION_SET_40       = 3102,
+    HERALD_ACTION_CREATE_20    = 3103,
+    HERALD_ACTION_CREATE_40    = 3104,
+    HERALD_ACTION_BACK_MAIN    = 3105,
+    HERALD_ACTION_CLOSE        = 3106,
+};
+
+static uint32 GetHeraldMapId(Creature* c)
+{
+    switch (c->GetEntry())
+    {
+        case 80100: return MAP_MOLTEN_CORE;       // 409
+        case 80101: return MAP_ONYXIAS_LAIR;      // 249
+        case 80102: return MAP_BLACKWING_LAIR;    // 469
+        case 80103: return MAP_AHN_QIRAJ_TEMPLE;  // 531
+        case 80104: return MAP_NAXXRAMAS;         // 533
+        default: return 0;
+    }
+}
+
+static const char* GetRaidMapName(uint32 mapId)
+{
+    switch (mapId)
+    {
+        case MAP_MOLTEN_CORE: return "Molten Core";
+        case MAP_ONYXIAS_LAIR: return "Onyxia's Lair";
+        case MAP_BLACKWING_LAIR: return "Blackwing Lair";
+        case MAP_AHN_QIRAJ_TEMPLE: return "Temple of Ahn'Qiraj";
+        case MAP_NAXXRAMAS: return "Naxxramas";
+        default: return "Unknown Raid";
+    }
+}
+
+static void ShowRaidHeraldMenu(Player* player, Creature* creature);
+
+static DungeonPersistentState* GetHeraldState(Player* player, uint32 mapId)
+{
+    DungeonPersistentState* state = nullptr;
+    if (Group* g = player->GetGroup())
+    {
+        if (InstanceGroupBind* gb = g->GetBoundInstance(mapId))
+            state = gb->state;
+    }
+    if (!state)
+    {
+        if (InstancePlayerBind* pb = player->GetBoundInstance(mapId))
+            state = pb->state;
+    }
+    return state;
+}
+
+static bool IsPlayerRaidLeader(Player* player)
+{
+    Group* g = player->GetGroup();
+    if (!g) return true; // solo counts as leader for his own bind
+    return g->IsLeader(player->GetObjectGuid());
+}
+
+bool GossipHello_RaidHerald(Player* player, Creature* creature)
+{
+    if (!player || !creature) return false;
+
+    if (!sWorld.getConfig(CONFIG_BOOL_RAID_20MAN_ENABLE))
+    {
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "20-man raids are currently disabled on this realm.", GOSSIP_SENDER_MAIN, HERALD_ACTION_CLOSE);
+        player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+        return true;
+    }
+
+    uint32 mapId = GetHeraldMapId(creature);
+    if (!mapId)
+    {
+        // Generic fallback: list all raids
+        for (uint32 m : {MAP_MOLTEN_CORE, MAP_ONYXIAS_LAIR, MAP_BLACKWING_LAIR, MAP_AHN_QIRAJ_TEMPLE, MAP_NAXXRAMAS})
+        {
+            if (!IsRaidModeConvertibleMap(m)) continue;
+            std::string label = std::string(GetRaidMapName(m)) + " (" + std::to_string(m) + ")";
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, label.c_str(), GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+        }
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Close", GOSSIP_SENDER_MAIN, HERALD_ACTION_CLOSE);
+        player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+        return true;
+    }
+
+    ShowRaidHeraldMenu(player, creature);
+    return true;
+}
+
+static void ShowRaidHeraldMenu(Player* player, Creature* creature)
+{
+    uint32 mapId = GetHeraldMapId(creature);
+    const char* raidName = GetRaidMapName(mapId);
+    player->PlayerTalkClass->GetGossipMenu().ClearMenu();
+
+    // patch gating info
+    bool patchBlocked = false;
+    if (sWorld.getConfig(CONFIG_BOOL_RAID_20MAN_PATCH_GATING))
+    {
+        uint8 req = RequiredPatchForRaid20Man(mapId);
+        if (sWorld.GetWowPatch() < req)
+            patchBlocked = true;
+    }
+
+    if (patchBlocked)
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s: 20-man not yet available in current patch.", raidName);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, buf, GOSSIP_SENDER_MAIN, HERALD_ACTION_CLOSE);
+        player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+        return;
+    }
+
+    DungeonPersistentState* state = GetHeraldState(player, mapId);
+    Group* grp = player->GetGroup();
+    bool isLeader = IsPlayerRaidLeader(player);
+    bool inRaidGroup = grp && grp->isRaidGroup();
+
+    // Header info as non-selectable items (using chat icon)
+    char header[256];
+    if (state)
+    {
+        snprintf(header, sizeof(header), "%s | Current mode: %s | Instance %u", raidName, state->Is20Man() ? "20-man" : "40-man", state->GetInstanceId());
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, header, GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+        // Show player cap
+        snprintf(header, sizeof(header), "  Max players: %u  (Health x%.2f  Damage x%.2f)", state->Is20Man() ? 20u : 40u,
+            sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH), sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE));
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, header, GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+    }
+    else
+    {
+        snprintf(header, sizeof(header), "%s | No saved instance yet.", raidName);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, header, GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+    }
+
+    if (!isLeader)
+    {
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Only the raid leader may change raid size.", GOSSIP_SENDER_MAIN, HERALD_ACTION_CLOSE);
+    }
+    else if (grp && !inRaidGroup)
+    {
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "You must be in a raid group to set raid size.", GOSSIP_SENDER_MAIN, HERALD_ACTION_CLOSE);
+    }
+    else if (state)
+    {
+        std::string reason;
+        bool canToggle = state->CanToggleRaidMode(reason);
+        if (state->Is20Man())
+            player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_INTERACT_1, "Switch to 40-man (normal)", GOSSIP_SENDER_MAIN, HERALD_ACTION_SET_40,
+                canToggle ? "Convert this saved instance to 40-man? Requires fresh lockout (no bosses killed, no soft-reserve, nobody inside)." : reason.c_str(), false);
+        else
+            player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_INTERACT_1, "Switch to 20-man", GOSSIP_SENDER_MAIN, HERALD_ACTION_SET_20,
+                canToggle ? "Convert this saved instance to 20-man? Health and damage will be scaled. Shared lockout with 40-man. Requires fresh lockout." : reason.c_str(), false);
+
+        // If cannot toggle due to encounter, show reason directly
+        if (!canToggle)
+        {
+            char rbuf[256];
+            snprintf(rbuf, sizeof(rbuf), "Cannot convert: %s", reason.c_str());
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, rbuf, GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+        }
+    }
+    else
+    {
+        // No state yet -> offer to create new 20-man lockout
+        player->ADD_GOSSIP_ITEM_EXTENDED(GOSSIP_ICON_INTERACT_1, "Create new 20-man lockout for this raid", GOSSIP_SENDER_MAIN, HERALD_ACTION_CREATE_20,
+            "Create a fresh 20-man instance now? You will be saved to it immediately. Shared lockout: you cannot also run 40-man this reset.", false);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Or just zone in as 40-man and return here before first pull to convert.", GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+    }
+
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "How does 20-man work?", GOSSIP_SENDER_MAIN, HERALD_ACTION_STATUS);
+    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Close", GOSSIP_SENDER_MAIN, HERALD_ACTION_CLOSE);
+    player->SEND_GOSSIP_MENU(DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+}
+
+bool GossipSelect_RaidHerald(Player* player, Creature* creature, uint32 sender, uint32 action)
+{
+    if (!player || !creature) return false;
+    if (sender != GOSSIP_SENDER_MAIN) return true;
+
+    uint32 mapId = GetHeraldMapId(creature);
+    if (!mapId) return true;
+
+    switch (action)
+    {
+        case HERALD_ACTION_STATUS:
+        {
+            ChatHandler ch(player);
+            ch.PSendSysMessage("|cff00ccff[Raid Herald]|r 20-man raids share lockout with 40-man and use identical loot. Only the raid leader may toggle before any boss is pulled. Nobody may be inside the instance at the moment of conversion.");
+            ShowRaidHeraldMenu(player, creature);
+            break;
+        }
+        case HERALD_ACTION_SET_20:
+        case HERALD_ACTION_SET_40:
+        {
+            if (!IsPlayerRaidLeader(player))
+            {
+                ChatHandler(player).PSendSysMessage("|cffff0000Only the raid leader may change raid size.|r");
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            DungeonPersistentState* state = GetHeraldState(player, mapId);
+            if (!state)
+            {
+                ChatHandler(player).PSendSysMessage("No saved instance found for %s.", GetRaidMapName(mapId));
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            uint8 target = (action == HERALD_ACTION_SET_20) ? RAID_MODE_20MAN : RAID_MODE_40MAN;
+            std::string reason;
+            if (!state->CanToggleRaidMode(reason))
+            {
+                ChatHandler(player).PSendSysMessage("|cffff0000Cannot convert: %s|r", reason.c_str());
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            if (state->SetRaidMode(target))
+            {
+                if (target == RAID_MODE_20MAN)
+                    ChatHandler(player).PSendSysMessage("|cff00ff00[Raid Herald]|r %s is now set to |cff00ff0020-man|r. Max 20 players. Scaling H=%.2f D=%.2f. Shared lockout active!|r",
+                        GetRaidMapName(mapId), sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH), sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE));
+                else
+                    ChatHandler(player).PSendSysMessage("|cff00ff00[Raid Herald]|r %s is now set to |cff00ff0040-man|r.|r", GetRaidMapName(mapId));
+            }
+            else
+            {
+                ChatHandler(player).PSendSysMessage("|cffff0000Conversion failed.|r");
+            }
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+        case HERALD_ACTION_CREATE_20:
+        {
+            if (!IsPlayerRaidLeader(player))
+            {
+                ChatHandler(player).PSendSysMessage("|cffff0000Only the raid leader may create a lockout.|r");
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            if (!IsRaidModeConvertibleMap(mapId))
+            {
+                ChatHandler(player).PSendSysMessage("This raid cannot be converted.");
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            if (sWorld.getConfig(CONFIG_BOOL_RAID_20MAN_PATCH_GATING))
+            {
+                uint8 req = RequiredPatchForRaid20Man(mapId);
+                if (sWorld.GetWowPatch() < req)
+                {
+                    ChatHandler(player).PSendSysMessage("20-man for %s not yet available in patch %u (need %u).", GetRaidMapName(mapId), uint32(sWorld.GetWowPatch()), uint32(req));
+                    player->CLOSE_GOSSIP_MENU();
+                    break;
+                }
+            }
+            // shared-lockout check: if player or group already permanently bound to different instance of same map, block.
+            if (InstancePlayerBind* pb = player->GetBoundInstance(mapId))
+            {
+                if (pb->perm)
+                {
+                    ChatHandler(player).PSendSysMessage("You are already permanently saved to %s instance %u - cannot create a new lockout this reset (shared 20/40 lockout).", GetRaidMapName(mapId), pb->state ? pb->state->GetInstanceId() : 0);
+                    player->CLOSE_GOSSIP_MENU();
+                    break;
+                }
+            }
+            if (Group* g = player->GetGroup())
+            {
+                if (InstanceGroupBind* gb = g->GetBoundInstance(mapId))
+                {
+                    if (gb->perm)
+                    {
+                        ChatHandler(player).PSendSysMessage("Your group is already permanently saved to %s - cannot create a new lockout this reset.", GetRaidMapName(mapId));
+                        player->CLOSE_GOSSIP_MENU();
+                        break;
+                    }
+                }
+            }
+            if (GetHeraldState(player, mapId))
+            {
+                ChatHandler(player).PSendSysMessage("You already have a saved instance for %s. Use the toggle instead.", GetRaidMapName(mapId));
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            // Create new instance save with 20-man mode
+            MapEntry const* entry = sMapStorage.LookupEntry<MapEntry>(mapId);
+            if (!entry)
+            {
+                ChatHandler(player).PSendSysMessage("Map entry not found.");
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            uint32 newIid = sMapMgr.GenerateInstanceId();
+            MapPersistentState* base = sMapPersistentStateMgr.AddPersistentState(entry, newIid, 0, true, false, true, RAID_MODE_20MAN);
+            DungeonPersistentState* dstate = dynamic_cast<DungeonPersistentState*>(base);
+            if (!dstate)
+            {
+                ChatHandler(player).PSendSysMessage("Failed to create instance.");
+                player->CLOSE_GOSSIP_MENU();
+                break;
+            }
+            // Bind
+            if (Group* g = player->GetGroup())
+            {
+                g->BindToInstance(dstate, false);
+                // Also bind leader personally as group bind will propagate to members on entry; ensure leader has personal reference cleared if needed handled by BindToInstance
+            }
+            else
+            {
+                player->BindToInstance(dstate, false);
+            }
+            ChatHandler(player).PSendSysMessage("|cff00ff00[Raid Herald]|r Created new |cff00ff0020-man|r lockout for %s (Instance %u). Zone in to begin!|r", GetRaidMapName(mapId), newIid);
+            sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "RaidHerald: player %s created 20-man instance %u for map %u", player->GetName(), newIid, mapId);
+            player->CLOSE_GOSSIP_MENU();
+            break;
+        }
+        case HERALD_ACTION_CLOSE:
+        default:
+            player->CLOSE_GOSSIP_MENU();
+            break;
+    }
+    return true;
+}
+
+
+
 void AddSC_custom_creatures()
 {
     Script* newscript;
@@ -1883,5 +2225,11 @@ void AddSC_custom_creatures()
     newscript = new Script;
     newscript->Name = "custom_npc_summon_debugAI";
     newscript->GetAI = &GetAI_custom_summon_debug;
+    newscript->RegisterSelf(false);
+
+    newscript = new Script;
+    newscript->Name = "npc_raid_herald";
+    newscript->pGossipHello = &GossipHello_RaidHerald;
+    newscript->pGossipSelect = &GossipSelect_RaidHerald;
     newscript->RegisterSelf(false);
 }

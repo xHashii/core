@@ -1278,6 +1278,13 @@ void World::LoadConfigSettings(bool reload)
     setConfig(CONFIG_BOOL_HARDCORE_PALADIN_RESTRICTION, "Hardcore.PaladinRestriction", true);
     setConfig(CONFIG_BOOL_HARDCORE_DEATH_ANNOUNCEMENT, "Hardcore.DeathAnnouncement", true);
 
+    // 20-man raid conversion (shared lockout, normal loot, NPC entrance toggle)
+    setConfig(CONFIG_BOOL_RAID_20MAN_ENABLE,       "Raid.20Man.Enable", true);
+    setConfig(CONFIG_BOOL_RAID_20MAN_PATCH_GATING, "Raid.20Man.PatchGating", true);
+    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH,      "Raid.20Man.Rate.Health", 0.5f);
+    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE,      "Raid.20Man.Rate.Damage", 0.6f);
+    setConfig(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE, "Raid.20Man.Rate.SpellDamage", 0.6f);
+
     // Bounty System
     setConfigMinMax(CONFIG_UINT32_BOUNTY_ANNOUNCE_MODE, "Bounty.Announce.Mode", BOUNTY_ANNOUNCE_REAL_PLAYERS, BOUNTY_ANNOUNCE_NONE, BOUNTY_ANNOUNCE_ALL);
     setConfig(CONFIG_UINT32_BOUNTY_ANNOUNCE_COOLDOWN, "Bounty.Announce.Cooldown", 60);

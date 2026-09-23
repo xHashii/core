@@ -36,6 +36,7 @@
 #include "MapRefManager.h"
 #include "DBCEnums.h"
 #include "MapPersistentStateMgr.h"
+#include "Maps/RaidMode.h"
 #include "VMapFactory.h"
 #include "BattleGroundMgr.h"
 #include "DynamicTree.h"
@@ -2486,6 +2487,45 @@ bool DungeonMap::CanEnter(Player* player)
         return false;
     }
 
+    // Shared lockout for 20-man / 40-man: a permanent bind to any instance of this map blocks entry to a different instance.
+    if (InstancePlayerBind* bind = player->GetBoundInstance(GetId()))
+    {
+        if (bind->perm && bind->state && bind->state != GetPersistanceState())
+        {
+            // Different instance (could be different raid mode) but same map -> shared lockout
+            player->SendTransferAborted(TRANSFER_ABORT_ZONE_IN_COMBAT);
+            ChatHandler(player).PSendSysMessage("You are already locked to another instance of this raid (shared 20/40 lockout).");
+            return false;
+        }
+    }
+    if (Group* grp = player->GetGroup())
+    {
+        if (InstanceGroupBind* gBind = grp->GetBoundInstance(GetId()))
+        {
+            if (gBind->perm && gBind->state && gBind->state != GetPersistanceState())
+            {
+                player->SendTransferAborted(TRANSFER_ABORT_ZONE_IN_COMBAT);
+                ChatHandler(player).PSendSysMessage("Your group is already locked to another instance of this raid (shared 20/40 lockout).");
+                return false;
+            }
+        }
+        // Also check any group member's permanent personal bind that would conflict (shared lockout)
+        for (GroupReference* itr = grp->GetFirstMember(); itr != nullptr; itr = itr->next())
+        {
+            if (Player* mem = itr->getSource())
+            {
+                if (mem == player) continue;
+                if (InstancePlayerBind* mb = mem->GetBoundInstance(GetId()))
+                    if (mb->perm && mb->state && mb->state != GetPersistanceState())
+                    {
+                        player->SendTransferAborted(TRANSFER_ABORT_ZONE_IN_COMBAT);
+                        ChatHandler(player).PSendSysMessage("A group member is already locked to another instance of this raid.");
+                        return false;
+                    }
+            }
+        }
+    }
+
     // World of Warcraft Client Patch 1.11.0 (2006-06-20)
     // - Instituted an anti-exploit measure on certain encounters (almost
     //   entirely raid bosses).These encounters will prevent people from
@@ -2767,6 +2807,11 @@ void DungeonMap::SetResetSchedule(bool on)
 
 uint32 DungeonMap::GetMaxPlayers() const
 {
+    if (!sWorld.getConfig(CONFIG_BOOL_RAID_20MAN_ENABLE))
+        return m_mapEntry->maxPlayers;
+    if (DungeonPersistentState const* state = GetPersistanceState())
+        if (state->Is20Man())
+            return 20;
     return m_mapEntry->maxPlayers;
 }
 
