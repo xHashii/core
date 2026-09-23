@@ -588,6 +588,25 @@ enum DuelCompleteType
     DUEL_FLED        = 2
 };
 
+// Result of Player::ChallengeMakgora / Player::CanChallengeMakgora
+enum MakgoraChallengeResult
+{
+    MAKGORA_OK = 0,
+    MAKGORA_ERR_DEAD,               // challenger is dead
+    MAKGORA_ERR_IN_COMBAT,          // challenger is in combat
+    MAKGORA_ERR_ALREADY_DUELING,    // challenger already has a duel (request) going
+    MAKGORA_ERR_NO_TARGET,          // no / offline target
+    MAKGORA_ERR_SELF,               // challenging yourself
+    MAKGORA_ERR_TARGET_DEAD,
+    MAKGORA_ERR_TARGET_BUSY,        // target in combat or already dueling
+    MAKGORA_ERR_TOO_FAR,            // > MAKGORA_CHALLENGE_RANGE yards
+    MAKGORA_ERR_NO_DUEL_AREA,       // area does not allow dueling
+    MAKGORA_ERR_FAILED              // duel request could not be created (ignore list, transport, map ...)
+};
+
+#define MAKGORA_CHALLENGE_RANGE 30.0f
+#define MAKGORA_DUEL_SPELL_ID   7266    // the regular "Duel" spell: plants the flag and sends SMSG_DUEL_REQUESTED
+
 // Type of environmental damages
 enum EnvironmentalDamageType
 {
@@ -2228,13 +2247,27 @@ class Player final: public Unit
         DuelInfo* m_duel;
         bool IsInDuelWith(Player const* player) const { return m_duel && m_duel->opponent == player && m_duel->startTime != 0; }
         bool IsMakgora() const { return m_duel && m_duel->isMakgora; }
+        // Mak'gora duel that has actually started (countdown finished)
+        bool IsInStartedMakgora() const { return m_duel && m_duel->isMakgora && m_duel->startTime != 0; }
+        // Mak'gora duel request that is still waiting for an answer (flag planted, no countdown yet)
+        bool HasPendingMakgoraDuelRequest() const { return m_duel && m_duel->isMakgora && !m_duel->finished && m_duel->startTime == 0 && m_duel->startTimer == 0; }
         void SetMakgora(bool on) { if (m_duel) m_duel->isMakgora = on; }
         uint32 GetMakgoraWins() const { return m_makgoraWins; }
         void SetMakgoraWins(uint32 wins) { m_makgoraWins = wins; }
         void AddMakgoraWin(Player* victim);
         ObjectGuid GetMakgoraChallenger() const { return m_makgoraChallengerGuid; }
         void SetMakgoraChallenger(ObjectGuid guid) { m_makgoraChallengerGuid = guid; m_makgoraChallengeTime = time(nullptr); }
-        bool HasPendingMakgoraChallenge(ObjectGuid from) const { return m_makgoraChallengerGuid == from && (time(nullptr) - m_makgoraChallengeTime) < 60; }
+        void ClearMakgoraChallenge() { m_makgoraChallengerGuid.Clear(); m_makgoraChallengeTime = 0; }
+        bool HasPendingMakgoraChallenge(ObjectGuid from) const { return !from.IsEmpty() && m_makgoraChallengerGuid == from && (time(nullptr) - m_makgoraChallengeTime) < 60; }
+        // Validates a Mak'gora challenge against target without side effects.
+        MakgoraChallengeResult CanChallengeMakgora(Player const* target) const;
+        // Validates and, on success, immediately sends target the regular duel request flagged as Mak'gora.
+        MakgoraChallengeResult ChallengeMakgora(Player* target);
+        // Accept / decline a pending Mak'gora duel request (same as answering the duel popup).
+        bool AcceptPendingDuelRequest();
+        bool DeclinePendingDuelRequest();
+        // Human readable explanation for a failed challenge (target may be nullptr).
+        static std::string GetMakgoraErrorText(MakgoraChallengeResult result, Player const* target);
         void UpdateDuelFlag(time_t currTime);
         void CheckDuelDistance(time_t currTime);
         void DuelComplete(DuelCompleteType type);

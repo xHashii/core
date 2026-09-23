@@ -624,6 +624,15 @@ bool ChatHandler::HandleReviveCommand(char* args)
 
     if (target)
     {
+        // Fallen Hardcore characters are locked in death (Player::ResurrectPlayer refuses);
+        // a Game Master has to use the explicit ".hardcore revive" command instead.
+        if (target->IsHardcore() && target->IsHardcoreDead())
+        {
+            PSendSysMessage("%s is a fallen Hardcore character. Use .hardcore revive %s to bring them back.", playerLink(target->GetName()).c_str(), target->GetName());
+            SetSentErrorMessage(true);
+            return false;
+        }
+
         target->ResurrectPlayer(0.5f);
         target->SpawnCorpseBones();
         PSendSysMessage(LANG_CHARACTER_REVIVED_ONLINE, playerLink(target->GetName()).c_str());
@@ -6038,9 +6047,9 @@ bool ChatHandler::HandleMakgoraCommand(char* args)
         return false;
 
     PSendSysMessage("=== |cffff0000Mak'gora (Duel to the Death)|r ===");
-    PSendSysMessage(".makgora challenge <player> - Challenge a player/bot to Mak'gora");
-    PSendSysMessage(".makgora accept <player>    - Accept a pending Mak'gora challenge");
-    PSendSysMessage(".makgora decline            - Decline a pending Mak'gora challenge");
+    PSendSysMessage(".makgora challenge <player> - Challenge a player/bot: they get a regular duel request, but the loser dies");
+    PSendSysMessage(".makgora accept             - Accept a pending Mak'gora duel request (same as the duel popup)");
+    PSendSysMessage(".makgora decline            - Decline a pending Mak'gora duel request");
     PSendSysMessage(".makgora status             - View your Mak'gora record");
     PSendSysMessage("Your Mak'gora Victories: %u", player->GetMakgoraWins());
     return true;
@@ -6051,24 +6060,6 @@ bool ChatHandler::HandleMakgoraChallengeCommand(char* args)
     Player* player = m_session ? m_session->GetPlayer() : nullptr;
     if (!player)
         return false;
-
-    if (!player->IsAlive())
-    {
-        PSendSysMessage("You cannot challenge anyone to Mak'gora while dead.");
-        return true;
-    }
-
-    if (player->IsInCombat())
-    {
-        PSendSysMessage("You cannot challenge anyone to Mak'gora while in combat.");
-        return true;
-    }
-
-    if (player->m_duel)
-    {
-        PSendSysMessage("You are already engaged in a duel.");
-        return true;
-    }
 
     Player* target = nullptr;
     ObjectGuid target_guid;
@@ -6082,145 +6073,53 @@ bool ChatHandler::HandleMakgoraChallengeCommand(char* args)
         }
     }
 
-    if (!target || !target->IsInWorld())
+    // Validate first so the challenger gets a precise reason instead of a silent failure.
+    MakgoraChallengeResult result = player->ChallengeMakgora(target);
+    if (result != MAKGORA_OK)
     {
-        PSendSysMessage("Target player not found or offline.");
+        SendSysMessage(Player::GetMakgoraErrorText(result, target).c_str());
         return true;
     }
 
-    if (target == player)
-    {
-        PSendSysMessage("You cannot challenge yourself to a Mak'gora.");
-        return true;
-    }
-
-    if (!target->IsAlive())
-    {
-        PSendSysMessage("%s is dead.", target->GetName());
-        return true;
-    }
-
-    if (target->IsInCombat() || target->m_duel)
-    {
-        PSendSysMessage("%s is currently in combat or dueling.", target->GetName());
-        return true;
-    }
-
-    if (!player->IsWithinDistInMap(target, 30.0f))
-    {
-        PSendSysMessage("%s is too far away to challenge (must be within 30 yards).", target->GetName());
-        return true;
-    }
-
-    const auto* areaEntry = AreaEntry::GetById(player->GetAreaId());
-    if (areaEntry && !(areaEntry->Flags & AREA_FLAG_DUEL))
-    {
-        PSendSysMessage("Mak'gora duels are not permitted in this area.");
-        return true;
-    }
-
-    target->SetMakgoraChallenger(player->GetObjectGuid());
-    PSendSysMessage("|cffff0000[Mak'gora]|r You have challenged %s to a Mak'gora (Duel to the Death)!", target->GetName());
-    target->PSendSysMessage("|cffff0000[Mak'gora Challenge]|r %s has challenged you to a Mak'gora (Duel to the Death)!", player->GetName());
-    target->PSendSysMessage("|cffff0000[Mak'gora Challenge]|r Type |cffffd700.makgora accept %s|r to accept, or |cffffd700.makgora decline|r to decline.", player->GetName());
-
-    // Playerbot response
-    if (target->GetPlayerbotAI())
-    {
-        if (target->GetHealthPercent() >= 90)
-        {
-            std::string text = std::string("I accept your challenge to the death in Mak'gora, ") + player->GetName() + "! Lok'tar Ogar!";
-            target->Say(text.c_str(), LANG_UNIVERSAL);
-            player->CastSpell(target, 7266, true);
-            if (player->m_duel)
-                player->m_duel->isMakgora = true;
-            if (target->m_duel)
-                target->m_duel->isMakgora = true;
-
-            std::ostringstream ss;
-            ss << "|cffff0000[Mak'gora]|r " << player->GetName() << " and " << target->GetName() << " have entered a Mak'gora (Duel to the Death)!";
-            sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
-        }
-        else
-        {
-            std::string text = std::string("I am not ready to fight a Mak'gora yet, ") + player->GetName() + "!";
-            target->Say(text.c_str(), LANG_UNIVERSAL);
-        }
-    }
-
+    // Success: the target now has the standard duel request (flag + popup) flagged as
+    // Mak'gora. Bots answer through their AI (AcceptDuelAction), players via the popup.
+    // The world announcement is sent when the fight actually starts (Player::UpdateDuelFlag).
     return true;
 }
 
-bool ChatHandler::HandleMakgoraAcceptCommand(char* args)
+bool ChatHandler::HandleMakgoraAcceptCommand(char* /*args*/)
 {
     Player* player = m_session ? m_session->GetPlayer() : nullptr;
     if (!player)
         return false;
 
-    if (!player->IsAlive() || player->IsInCombat() || player->m_duel)
+    if (!player->IsAlive())
     {
-        PSendSysMessage("You cannot accept a Mak'gora right now.");
+        PSendSysMessage("You cannot accept a Mak'gora while dead.");
         return true;
     }
 
-    Player* challenger = nullptr;
-    ObjectGuid challenger_guid;
-    if (ExtractPlayerTarget(&args, &challenger, &challenger_guid))
+    // Preferred path: a Mak'gora duel request is waiting for our answer -> accept it,
+    // exactly like clicking "Accept" on the duel popup.
+    if (player->HasPendingMakgoraDuelRequest())
     {
-        if (!challenger)
-            challenger = sObjectMgr.GetPlayer(challenger_guid);
-    }
-    else
-    {
-        ObjectGuid pendingGuid = player->GetMakgoraChallenger();
-        if (pendingGuid)
-            challenger = sObjectMgr.GetPlayer(pendingGuid);
+        if (player->m_duel->initiator == player)
+        {
+            PSendSysMessage("You issued this Mak'gora challenge - wait for %s to answer.", player->m_duel->opponent ? player->m_duel->opponent->GetName() : "your opponent");
+            return true;
+        }
+
+        if (player->AcceptPendingDuelRequest())
+        {
+            PSendSysMessage("|cffff0000[Mak'gora]|r You have accepted the Mak'gora against %s. Prepare yourself!", player->m_duel->opponent ? player->m_duel->opponent->GetName() : "your opponent");
+            return true;
+        }
     }
 
-    if (!challenger || !challenger->IsInWorld())
-    {
-        PSendSysMessage("No valid Mak'gora challenger found.");
-        return true;
-    }
-
-    if (!player->HasPendingMakgoraChallenge(challenger->GetObjectGuid()) &&
-        !challenger->HasPendingMakgoraChallenge(player->GetObjectGuid()))
-    {
-        PSendSysMessage("You do not have an active Mak'gora challenge from %s.", challenger->GetName());
-        return true;
-    }
-
-    if (!challenger->IsAlive() || challenger->IsInCombat() || challenger->m_duel)
-    {
-        PSendSysMessage("%s is no longer ready for Mak'gora.", challenger->GetName());
-        return true;
-    }
-
-    if (!player->IsWithinDistInMap(challenger, 30.0f))
-    {
-        PSendSysMessage("%s is too far away (must be within 30 yards).", challenger->GetName());
-        return true;
-    }
-
-    const auto* areaEntry = AreaEntry::GetById(player->GetAreaId());
-    if (areaEntry && !(areaEntry->Flags & AREA_FLAG_DUEL))
-    {
-        PSendSysMessage("Mak'gora duels are not permitted in this area.");
-        return true;
-    }
-
-    // Initiate the duel
-    challenger->CastSpell(player, 7266, true);
-    if (challenger->m_duel)
-        challenger->m_duel->isMakgora = true;
     if (player->m_duel)
-        player->m_duel->isMakgora = true;
-
-    std::ostringstream ss;
-    ss << "|cffff0000[Mak'gora]|r " << challenger->GetName() << " and " << player->GetName()
-       << " have entered a Mak'gora (Duel to the Death)! One will emerge victorious, the other shall perish!";
-    sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
-
+        PSendSysMessage("You cannot accept a Mak'gora right now (already dueling).");
+    else
+        PSendSysMessage("You do not have a pending Mak'gora duel request. Ask your opponent to challenge you again.");
     return true;
 }
 
@@ -6230,17 +6129,15 @@ bool ChatHandler::HandleMakgoraDeclineCommand(char* /*args*/)
     if (!player)
         return false;
 
-    ObjectGuid challengerGuid = player->GetMakgoraChallenger();
-    if (challengerGuid)
+    if (player->HasPendingMakgoraDuelRequest())
     {
-        if (Player* challenger = sObjectMgr.GetPlayer(challengerGuid))
-        {
-            challenger->PSendSysMessage("|cffff0000[Mak'gora]|r %s has declined your challenge.", player->GetName());
-        }
-        player->SetMakgoraChallenger(ObjectGuid());
+        // Same as clicking "Decline" on the duel popup (Player::DuelComplete notifies both sides).
+        player->DeclinePendingDuelRequest();
+        return true;
     }
 
-    PSendSysMessage("You have declined the Mak'gora challenge.");
+    player->ClearMakgoraChallenge();
+    PSendSysMessage("You do not have a pending Mak'gora duel request.");
     return true;
 }
 
@@ -6253,6 +6150,10 @@ bool ChatHandler::HandleMakgoraStatusCommand(char* /*args*/)
     PSendSysMessage("=== |cffff0000Mak'gora Status|r ===");
     PSendSysMessage("Mak'gora Victories: |cff00ff00%u|r", player->GetMakgoraWins());
     PSendSysMessage("Hardcore Status: %s", player->IsHardcore() ? "|cffff0000Hardcore (Permanent Death)|r" : "|cff00ff00Normal|r");
+    if (player->HasPendingMakgoraDuelRequest())
+        PSendSysMessage("Pending Mak'gora duel request with %s.", player->m_duel->opponent ? player->m_duel->opponent->GetName() : "unknown");
+    else if (player->IsInStartedMakgora())
+        PSendSysMessage("You are fighting a Mak'gora against %s right now!", player->m_duel->opponent ? player->m_duel->opponent->GetName() : "unknown");
     return true;
 }
 

@@ -802,21 +802,24 @@ void WorldSession::HandleTextEmoteOpcode(WorldPackets::Misc::TextEmote const& pa
     if (unit && unit->IsCreature() && ((Creature*)unit)->AI())
         ((Creature*)unit)->AI()->ReceiveEmote(GetPlayer(), packet.textEmote);
 
-    // Mak'gora challenge emote trigger (/threaten or /taunt)
+    // Mak'gora challenge emote trigger (/threaten or /taunt at a player)
     if (unit && unit->IsPlayer() && unit != GetPlayer())
     {
         if (packet.textEmote == TEXTEMOTE_THREATEN || packet.textEmote == TEXTEMOTE_TAUNT)
         {
+            Player* me = GetPlayer();
             Player* targetPlayer = unit->ToPlayer();
-            if (GetPlayer()->IsAlive() && !GetPlayer()->IsInCombat() && !GetPlayer()->m_duel &&
-                targetPlayer->IsAlive() && !targetPlayer->IsInCombat() && !targetPlayer->m_duel &&
-                GetPlayer()->IsWithinDistInMap(targetPlayer, 30.0f))
+
+            // Taunting back the player whose Mak'gora request is waiting for us accepts it.
+            if (me->HasPendingMakgoraDuelRequest() && me->m_duel->opponent == targetPlayer && me->m_duel->initiator != me)
             {
-                if (GetPlayer()->HasPendingMakgoraChallenge(targetPlayer->GetObjectGuid()))
-                    ChatHandler(GetPlayer()).HandleMakgoraAcceptCommand(const_cast<char*>(targetPlayer->GetName()));
-                else
-                    ChatHandler(GetPlayer()).HandleMakgoraChallengeCommand(const_cast<char*>(targetPlayer->GetName()));
+                if (me->AcceptPendingDuelRequest())
+                    me->PSendSysMessage("|cffff0000[Mak'gora]|r You have accepted the Mak'gora against %s. Prepare yourself!", targetPlayer->GetName());
             }
+            // Otherwise only issue a challenge when everything is in order; stay silent if not
+            // (an emote must never spam error messages).
+            else if (me->CanChallengeMakgora(targetPlayer) == MAKGORA_OK)
+                me->ChallengeMakgora(targetPlayer);
         }
     }
 }

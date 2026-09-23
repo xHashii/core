@@ -2059,7 +2059,8 @@ bool Player::TeleportTo(uint32 mapId, float x, float y, float z, float orientati
     else
     {
         // Revive player who died inside instance.
-        if ((GetDeathState() == DEAD) && (mapId > 1) && (GetMapId() != mapId))
+        // (never for a fallen Hardcore character: permanent death, corpse stays where it is)
+        if ((GetDeathState() == DEAD) && (mapId > 1) && (GetMapId() != mapId) && !(IsHardcore() && IsHardcoreDead()))
         {
             if (Corpse* corpse = GetCorpse())
             {
@@ -2259,7 +2260,7 @@ void Player::ProcessDelayedOperations()
     if (m_delayedOperations == 0)
         return;
 
-    if (m_delayedOperations & DELAYED_RESURRECT_PLAYER)
+    if ((m_delayedOperations & DELAYED_RESURRECT_PLAYER) && !(IsHardcore() && IsHardcoreDead()))
     {
         ResurrectPlayer(0.0f, false);
 
@@ -6925,6 +6926,19 @@ void Player::DuelComplete(DuelCompleteType type)
             sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
         }
     }
+    else if (m_duel->isMakgora && m_duel->startTime == 0)
+    {
+        // Mak'gora request declined / withdrawn / timed out before the fight began.
+        // (this = whoever ended it: the decliner, the initiator on flag timeout, a leaver ...)
+        Player* opponent = m_duel->opponent;
+        if (opponent)
+        {
+            opponent->PSendSysMessage("|cffff0000[Mak'gora]|r The Mak'gora with %s was called off before it began.", GetName());
+            opponent->ClearMakgoraChallenge();
+        }
+        PSendSysMessage("|cffff0000[Mak'gora]|r The Mak'gora with %s was called off before it began.", opponent ? opponent->GetName() : "your opponent");
+        ClearMakgoraChallenge();
+    }
 
     //Remove Duel Flag object
     if (GameObject* obj = GetMap()->GetGameObject(GetGuidValue(PLAYER_DUEL_ARBITER)))
@@ -6995,6 +7009,134 @@ void Player::DuelComplete(DuelCompleteType type)
     if (m_duel->opponent->m_duel)
         m_duel->opponent->m_duel->finished = true;
     m_duel->finished = true;
+}
+
+MakgoraChallengeResult Player::CanChallengeMakgora(Player const* target) const
+{
+    if (!IsAlive())
+        return MAKGORA_ERR_DEAD;
+
+    if (IsInCombat())
+        return MAKGORA_ERR_IN_COMBAT;
+
+    if (m_duel)
+        return MAKGORA_ERR_ALREADY_DUELING;
+
+    if (!target || !target->IsInWorld() || !target->GetSession())
+        return MAKGORA_ERR_NO_TARGET;
+
+    if (target == this)
+        return MAKGORA_ERR_SELF;
+
+    if (!target->IsAlive())
+        return MAKGORA_ERR_TARGET_DEAD;
+
+    if (target->IsInCombat() || target->m_duel)
+        return MAKGORA_ERR_TARGET_BUSY;
+
+    if (!IsWithinDistInMap(target, MAKGORA_CHALLENGE_RANGE))
+        return MAKGORA_ERR_TOO_FAR;
+
+    // Same restriction as regular duels: not inside instances / capital cities.
+    if (AreaEntry const* areaEntry = AreaEntry::GetById(GetAreaId()))
+        if (!(areaEntry->Flags & AREA_FLAG_DUEL))
+            return MAKGORA_ERR_NO_DUEL_AREA;
+
+    if (AreaEntry const* areaEntry = AreaEntry::GetById(target->GetAreaId()))
+        if (!(areaEntry->Flags & AREA_FLAG_DUEL))
+            return MAKGORA_ERR_NO_DUEL_AREA;
+
+    return MAKGORA_OK;
+}
+
+MakgoraChallengeResult Player::ChallengeMakgora(Player* target)
+{
+    MakgoraChallengeResult result = CanChallengeMakgora(target);
+    if (result != MAKGORA_OK)
+        return result;
+
+    // Remember who challenged whom: Spell::EffectDuel flags the freshly created
+    // duel as Mak'gora when it finds a pending challenge between the two players.
+    target->SetMakgoraChallenger(GetObjectGuid());
+
+    // Issue the regular duel request: plants the duel flag and sends
+    // SMSG_DUEL_REQUESTED to both sides, exactly like a normal duel.
+    CastSpell(target, MAKGORA_DUEL_SPELL_ID, true);
+
+    if (!m_duel || !target->m_duel || m_duel->opponent != target || target->m_duel->opponent != this)
+    {
+        // Spell::EffectDuel refused (ignore list, different map/transport, ...).
+        target->ClearMakgoraChallenge();
+        return MAKGORA_ERR_FAILED;
+    }
+
+    m_duel->isMakgora = true;
+    target->m_duel->isMakgora = true;
+
+    // The challenge has been consumed by the duel request. Clear the markers so
+    // that a later, regular duel between the two is not turned into a Mak'gora.
+    target->ClearMakgoraChallenge();
+    ClearMakgoraChallenge();
+
+    PSendSysMessage("|cffff0000[Mak'gora]|r You have challenged %s to a Mak'gora (Duel to the Death)! Awaiting their answer...", target->GetName());
+
+    if (!target->GetPlayerbotAI())
+    {
+        target->PSendSysMessage("|cffff0000[Mak'gora Challenge]|r %s has challenged you to a Mak'gora - a DUEL TO THE DEATH! Accepting the duel request means the loser really dies%s.",
+            GetName(), target->IsHardcore() ? " - you are Hardcore, that death is permanent" : "");
+        target->PSendSysMessage("|cffff0000[Mak'gora Challenge]|r Accept or decline the duel request (or type |cffffd700.makgora accept|r / |cffffd700.makgora decline|r).");
+        target->GetSession()->SendNotification("Mak'gora! %s challenges you to a duel to the death!", GetName());
+    }
+
+    return MAKGORA_OK;
+}
+
+bool Player::AcceptPendingDuelRequest()
+{
+    if (!m_duel || m_duel->finished || m_duel->startTime != 0 || m_duel->startTimer != 0)
+        return false;
+
+    Player* initiator = m_duel->opponent;
+    if (this == m_duel->initiator || !initiator || !initiator->m_duel || initiator->m_duel->finished ||
+        initiator->m_duel->startTime != 0 || initiator->m_duel->startTimer != 0)
+        return false;
+
+    time_t now = time(nullptr);
+    m_duel->startTimer = now;
+    initiator->m_duel->startTimer = now;
+
+    SendDuelCountdown(3000);
+    initiator->SendDuelCountdown(3000);
+    return true;
+}
+
+bool Player::DeclinePendingDuelRequest()
+{
+    if (!m_duel || m_duel->finished || m_duel->startTime != 0)
+        return false;
+
+    DuelComplete(DUEL_INTERRUPTED);
+    return true;
+}
+
+std::string Player::GetMakgoraErrorText(MakgoraChallengeResult result, Player const* target)
+{
+    std::string const targetName = target ? target->GetName() : "The target";
+    switch (result)
+    {
+        case MAKGORA_OK:                  return "";
+        case MAKGORA_ERR_DEAD:            return "You cannot challenge anyone to Mak'gora while dead.";
+        case MAKGORA_ERR_IN_COMBAT:       return "You cannot challenge anyone to Mak'gora while in combat.";
+        case MAKGORA_ERR_ALREADY_DUELING: return "You are already engaged in a duel.";
+        case MAKGORA_ERR_NO_TARGET:       return "Target player not found or offline.";
+        case MAKGORA_ERR_SELF:            return "You cannot challenge yourself to a Mak'gora.";
+        case MAKGORA_ERR_TARGET_DEAD:     return targetName + " is dead.";
+        case MAKGORA_ERR_TARGET_BUSY:     return targetName + " is currently in combat or dueling.";
+        case MAKGORA_ERR_TOO_FAR:         return targetName + " is too far away to challenge (must be within 30 yards).";
+        case MAKGORA_ERR_NO_DUEL_AREA:    return "Mak'gora duels are not permitted in this area.";
+        case MAKGORA_ERR_FAILED:          return "The Mak'gora challenge could not be issued (" + targetName + " cannot be dueled right now).";
+    }
+    return "The Mak'gora challenge could not be issued.";
 }
 
 void Player::AddMakgoraWin(Player* victim)
@@ -12228,7 +12370,8 @@ void Player::PrepareGossipMenu(WorldObject* pSource, uint32 menuId)
                     hasMenuItem = false;                    // added in special mode
                     break;
                 case GOSSIP_OPTION_SPIRITHEALER:
-                    if (!IsDead())
+                    // Hardcore: a fallen hero gets no "Return me to life" option at all
+                    if (!IsDead() || (IsHardcore() && IsHardcoreDead()))
                         hasMenuItem = false;
                     break;
                 case GOSSIP_OPTION_VENDOR:
@@ -12436,7 +12579,15 @@ void Player::OnGossipSelect(WorldObject* pSource, uint32 gossipListId)
         }
         case GOSSIP_OPTION_SPIRITHEALER:
             if (IsDead())
+            {
+                // Hardcore: permanent death, no spirit healer resurrection
+                if (IsHardcore() && IsHardcoreDead())
+                {
+                    GetSession()->SendNotification("Spirit Healers cannot help a fallen Hardcore hero. Death is permanent.");
+                    break;
+                }
                 ((Creature*)pSource)->CastSpell(((Creature*)pSource), 17251, true, nullptr, nullptr, GetObjectGuid());
+            }
             break;
         case GOSSIP_OPTION_QUESTGIVER:
             PrepareQuestMenu(guid);
@@ -17488,6 +17639,25 @@ void Player::UpdateDuelFlag(time_t currTime)
     {
         m_duel->opponent->m_duel->startTimer = 0;
         m_duel->opponent->m_duel->startTime  = currTime;
+    }
+
+    // Mak'gora: announce once, when the fight really begins (both accepted, countdown over).
+    if (m_duel->isMakgora)
+    {
+        Player* opponent = m_duel->opponent;
+        Player* initiator = m_duel->initiator ? m_duel->initiator : this;
+        Player* challenged = (initiator == this) ? opponent : this;
+
+        std::ostringstream ss;
+        ss << "|cffff0000[Mak'gora]|r " << initiator->GetName() << " and " << (challenged ? challenged->GetName() : "their opponent")
+           << " have entered a Mak'gora (Duel to the Death)! One will emerge victorious, the other shall perish!";
+        sWorld.SendWorldText(LANG_SYSTEMMESSAGE, ss.str().c_str());
+
+        PSendSysMessage("|cffff0000[Mak'gora]|r The Mak'gora has begun. There is no yielding - only victory or death%s.",
+                        IsHardcore() ? " (Hardcore: your death would be permanent)" : "");
+        if (opponent)
+            opponent->PSendSysMessage("|cffff0000[Mak'gora]|r The Mak'gora has begun. There is no yielding - only victory or death%s.",
+                                      opponent->IsHardcore() ? " (Hardcore: your death would be permanent)" : "");
     }
 }
 

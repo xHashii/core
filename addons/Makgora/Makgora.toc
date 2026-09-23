@@ -1,7 +1,0 @@
-## Interface: 11200,11402
-## Title: Mak'gora (Duel to the Death)
-## Notes: Adds 'Challenge to Mak'gora' option to player right-click unit menus. Supports Classic 1.12.1 and Classic 1.14.2 (build 42597) clients.
-## Author: Arena
-## Version: 1.1
-
-Makgora.lua

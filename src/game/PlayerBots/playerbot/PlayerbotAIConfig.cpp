@@ -629,6 +629,7 @@ bool PlayerbotAIConfig::Initialize()
     guildRepliesRate = config.GetIntDefault("AiPlayerbot.GuildRepliesRate", 100); //0-100
 
     botAcceptDuelMinimumLevel = config.GetIntDefault("AiPlayerbot.BotAcceptDuelMinimumLevel", 10);
+    botAcceptMakgoraMinimumHealth = std::min<uint32>(100, config.GetIntDefault("AiPlayerbot.BotAcceptMakgoraMinimumHealth", 50));
 
     randomBotFormGuild = config.GetBoolDefault("AiPlayerbot.RandomBotFormGuild", true);
 

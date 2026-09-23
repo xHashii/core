@@ -834,9 +834,18 @@ void Spell::EffectDummy(SpellEffectIndex effIdx)
 
                     if (caster && caster->GetTypeId() == TYPEID_PLAYER)
                     {
+                        // Hardcore: a fallen character has no way back. Never show the
+                        // "Return to life?" confirmation, the ghost stays a ghost.
+                        Player* pPlayer = static_cast<Player*>(caster);
+                        if (pPlayer->IsHardcore() && pPlayer->IsHardcoreDead())
+                        {
+                            pPlayer->GetSession()->SendNotification("Spirit Healers cannot help a fallen Hardcore hero. Death is permanent.");
+                            return;
+                        }
+
                         WorldPacket data(SMSG_SPIRIT_HEALER_CONFIRM, 8);
                         data << unitTarget->GetObjectGuid();
-                        ((Player*)caster)->GetSession()->SendPacket(&data);
+                        pPlayer->GetSession()->SendPacket(&data);
                     }
                     return;
                 }
@@ -4720,10 +4729,14 @@ void Spell::EffectDuel(SpellEffectIndex effIdx)
     duel2->startTime  = 0;
     duel2->startTimer = 0;
 
+    // Mak'gora (duel to the death): Player::ChallengeMakgora marks the target right before
+    // casting this spell. Consume the marker here so it can never leak into a later regular duel.
     if (caster->HasPendingMakgoraChallenge(target->GetObjectGuid()) || target->HasPendingMakgoraChallenge(caster->GetObjectGuid()))
     {
         duel->isMakgora = true;
         duel2->isMakgora = true;
+        caster->ClearMakgoraChallenge();
+        target->ClearMakgoraChallenge();
     }
 
     if (GenericTransport* t = caster->GetTransport())
@@ -5321,6 +5334,10 @@ void Spell::EffectSelfResurrect(SpellEffectIndex effIdx)
     if (!unitTarget->IsInWorld())
         return;
 
+    // Hardcore: permanent death, no self resurrection of any kind
+    if (static_cast<Player*>(unitTarget)->IsHardcore() && static_cast<Player*>(unitTarget)->IsHardcoreDead())
+        return;
+
     float health = 0;
     float mana = 0;
 
@@ -5815,6 +5832,13 @@ void Spell::EffectSpiritHeal(SpellEffectIndex /*effIdx*/)
 
     if (!player)
         return;
+
+    // Hardcore: permanent death, spirit guides cannot revive a fallen hero either
+    if (player->IsHardcore() && player->IsHardcoreDead())
+    {
+        player->RemoveAurasDueToSpell(2584);
+        return;
+    }
 
     // no resurrection on a GY other than homie if BG is not in progress
     if (player->GetBattleGround()->GetStatus() != STATUS_IN_PROGRESS && !player->IsGameMaster())

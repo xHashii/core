@@ -1,0 +1,9 @@
+## Interface: 11200
+## Title: Mak'gora (Duel to the Death)
+## Notes: Adds a "Challenge to Mak'gora" entry to the right-click menu of players. Vanilla 1.12.1 client build.
+## Author: Arena
+## Version: 2.0
+## X-Client: 1.12.1 (build 5875)
+## X-Command: /makgora
+
+Makgora.lua
