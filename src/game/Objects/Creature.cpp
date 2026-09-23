@@ -1854,7 +1854,7 @@ void Creature::InitStatsForLevel(float percentHealth, float percentMana)
     SetCreateStat(STAT_SPIRIT, pCLS->spirit);
 }
 
-float Creature::_GetHealthMod(int32 rank)
+float Creature::_GetHealthMod(int32 rank) const
 {
     float mod;
     switch (rank)                                           // define rates for each elite rank
@@ -1879,16 +1879,11 @@ float Creature::_GetHealthMod(int32 rank)
             break;
     }
     // 20-man scaling (shared lockout, normal loot)
-    if (Map* map = GetMap())
-        if (map->IsDungeon())
-            if (DungeonMap* dMap = dynamic_cast<DungeonMap*>(map))
-                if (DungeonPersistentState const* state = dMap->GetPersistanceState())
-                    if (state->Is20Man())
-                        mod *= sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH);
+    mod *= _GetRaidModeMod(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH);
     return mod;
 }
 
-float Creature::_GetDamageMod(int32 rank)
+float Creature::_GetDamageMod(int32 rank) const
 {
     float mod;
     switch (rank)                                           // define rates for each elite rank
@@ -1912,16 +1907,12 @@ float Creature::_GetDamageMod(int32 rank)
             mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_DAMAGE);
             break;
     }
-    if (Map* map = GetMap())
-        if (map->IsDungeon())
-            if (DungeonMap* dMap = dynamic_cast<DungeonMap*>(map))
-                if (DungeonPersistentState const* state = dMap->GetPersistanceState())
-                    if (state->Is20Man())
-                        mod *= sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE);
+    // 20-man scaling (shared lockout, normal loot)
+    mod *= _GetRaidModeMod(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE);
     return mod;
 }
 
-float Creature::_GetSpellDamageMod(int32 rank)
+float Creature::_GetSpellDamageMod(int32 rank) const
 {
     float mod;
     switch (rank)                                           // define rates for each elite rank
@@ -1945,13 +1936,27 @@ float Creature::_GetSpellDamageMod(int32 rank)
             mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_SPELLDAMAGE);
             break;
     }
-    if (Map* map = GetMap())
-        if (map->IsDungeon())
-            if (DungeonMap* dMap = dynamic_cast<DungeonMap*>(map))
-                if (DungeonPersistentState const* state = dMap->GetPersistanceState())
-                    if (state->Is20Man())
-                        mod *= sWorld.getConfig(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE);
+    // 20-man scaling (shared lockout, normal loot)
+    mod *= _GetRaidModeMod(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE);
     return mod;
+}
+
+float Creature::_GetRaidModeMod(uint32 configIndex) const
+{
+    // FindMap() instead of GetMap(): stats may be computed before the creature is placed on a map.
+    Map* map = FindMap();
+    if (!map || !map->IsDungeon())
+        return 1.0f;
+
+    DungeonMap* dMap = dynamic_cast<DungeonMap*>(map);
+    if (!dMap)
+        return 1.0f;
+
+    DungeonPersistentState const* state = dMap->GetPersistanceState();
+    if (!state || !state->Is20Man())
+        return 1.0f;
+
+    return sWorld.getConfig(eConfigFloatValues(configIndex));
 }
 
 bool Creature::CreateFromProto(uint32 guidlow, CreatureInfo const* cinfo, uint32 firstCreatureId, GameEventCreatureData const* eventData /*=nullptr*/)
