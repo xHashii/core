@@ -40,7 +40,6 @@
 #include "CreatureAISelector.h"
 #include "MovementGenerator.h"
 #include "MapPersistentStateMgr.h"
-#include "Maps/RaidMode.h"
 #include "BattleGroundMgr.h"
 #include "Util.h"
 #include "GridNotifiers.h"
@@ -1854,109 +1853,61 @@ void Creature::InitStatsForLevel(float percentHealth, float percentMana)
     SetCreateStat(STAT_SPIRIT, pCLS->spirit);
 }
 
-float Creature::_GetHealthMod(int32 rank) const
+float Creature::_GetHealthMod(int32 rank)
 {
-    float mod;
     switch (rank)                                           // define rates for each elite rank
     {
         case CREATURE_ELITE_NORMAL:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_NORMAL_HP);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_NORMAL_HP);
         case CREATURE_ELITE_ELITE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_HP);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_HP);
         case CREATURE_ELITE_RAREELITE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RAREELITE_HP);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RAREELITE_HP);
         case CREATURE_ELITE_WORLDBOSS:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_WORLDBOSS_HP);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_WORLDBOSS_HP);
         case CREATURE_ELITE_RARE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RARE_HP);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RARE_HP);
         default:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_HP);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_HP);
     }
-    // 20-man scaling (shared lockout, normal loot)
-    mod *= _GetRaidModeMod(CONFIG_FLOAT_RATE_RAID_20MAN_HEALTH);
-    return mod;
 }
 
-float Creature::_GetDamageMod(int32 rank) const
+float Creature::_GetDamageMod(int32 rank)
 {
-    float mod;
     switch (rank)                                           // define rates for each elite rank
     {
         case CREATURE_ELITE_NORMAL:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_NORMAL_DAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_NORMAL_DAMAGE);
         case CREATURE_ELITE_ELITE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_DAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_DAMAGE);
         case CREATURE_ELITE_RAREELITE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RAREELITE_DAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RAREELITE_DAMAGE);
         case CREATURE_ELITE_WORLDBOSS:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_WORLDBOSS_DAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_WORLDBOSS_DAMAGE);
         case CREATURE_ELITE_RARE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RARE_DAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RARE_DAMAGE);
         default:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_DAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_DAMAGE);
     }
-    // 20-man scaling (shared lockout, normal loot)
-    mod *= _GetRaidModeMod(CONFIG_FLOAT_RATE_RAID_20MAN_DAMAGE);
-    return mod;
 }
 
-float Creature::_GetSpellDamageMod(int32 rank) const
+float Creature::_GetSpellDamageMod(int32 rank)
 {
-    float mod;
     switch (rank)                                           // define rates for each elite rank
     {
         case CREATURE_ELITE_NORMAL:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_NORMAL_SPELLDAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_NORMAL_SPELLDAMAGE);
         case CREATURE_ELITE_ELITE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_SPELLDAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_SPELLDAMAGE);
         case CREATURE_ELITE_RAREELITE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RAREELITE_SPELLDAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RAREELITE_SPELLDAMAGE);
         case CREATURE_ELITE_WORLDBOSS:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_WORLDBOSS_SPELLDAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_WORLDBOSS_SPELLDAMAGE);
         case CREATURE_ELITE_RARE:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RARE_SPELLDAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_RARE_SPELLDAMAGE);
         default:
-            mod = sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_SPELLDAMAGE);
-            break;
+            return sWorld.getConfig(CONFIG_FLOAT_RATE_CREATURE_ELITE_ELITE_SPELLDAMAGE);
     }
-    // 20-man scaling (shared lockout, normal loot)
-    mod *= _GetRaidModeMod(CONFIG_FLOAT_RATE_RAID_20MAN_SPELLDAMAGE);
-    return mod;
-}
-
-float Creature::_GetRaidModeMod(uint32 configIndex) const
-{
-    // FindMap() instead of GetMap(): stats may be computed before the creature is placed on a map.
-    Map* map = FindMap();
-    if (!map || !map->IsDungeon())
-        return 1.0f;
-
-    DungeonMap* dMap = dynamic_cast<DungeonMap*>(map);
-    if (!dMap)
-        return 1.0f;
-
-    DungeonPersistentState const* state = dMap->GetPersistanceState();
-    if (!state || !state->Is20Man())
-        return 1.0f;
-
-    return sWorld.getConfig(eConfigFloatValues(configIndex));
 }
 
 bool Creature::CreateFromProto(uint32 guidlow, CreatureInfo const* cinfo, uint32 firstCreatureId, GameEventCreatureData const* eventData /*=nullptr*/)

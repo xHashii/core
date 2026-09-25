@@ -2164,12 +2164,17 @@ class Player final: public Unit
         uint32 GetExtraFlags() const { return m_ExtraFlags; }
 
         // Hardcore Mode
+        // Visual-only indicator buff (no mechanical effect) shown while Hardcore is enabled.
+        // Spell 80001 is a custom spell_template row (Apply Aura: DUMMY, infinite duration);
+        // unknown to the 2.4.3 client, so the buff slot renders with a blank icon/name.
+        #define SPELL_PLAYER_HARDCORE_INDICATOR 80001
         bool IsHardcore() const;
         void SetHardcore(bool on);
         bool IsHardcoreDead() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_DEAD) != 0; }
         void SetHardcoreDead(bool on);
         bool IsHardcoreSSF() const { return IsHardcore() && (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_SSF) != 0; }
         void SetHardcoreSSF(bool on);
+        void UpdateHardcoreIndicator();
 
         bool ToggleAFK();
         bool ToggleDND();

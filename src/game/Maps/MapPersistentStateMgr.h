@@ -36,7 +36,6 @@
 #include "PoolManager.h"
 #include "SQLStorages.h"
 #include "Map.h"
-#include "Maps/RaidMode.h"
 
 struct MapEntry;
 struct GameObjectData;
@@ -221,15 +220,6 @@ class DungeonPersistentState : public MapPersistentState
         /* Remove players bind to this state */
         void UnbindThisState();
 
-        // --- 20-man conversion (Phase 0) ---
-        uint8 GetRaidMode() const { return m_raidMode; }
-        bool Is20Man() const { return m_raidMode == RAID_MODE_20MAN; }
-        bool IsRaidModeConvertible() const;
-        bool CanToggleRaidMode(std::string& reason) const;
-        bool SetRaidMode(uint8 mode);
-        void SetRaidModeDirect(uint8 mode) { m_raidMode = mode; }
-        bool IsEncounterInProgress() const;
-
     protected:
         bool CanBeUnload() const override;                           // overwrite MapPersistentState::CanBeUnload
         bool HasBounds() const { return !m_playerList.empty() || !m_groupList.empty(); }
@@ -240,7 +230,6 @@ class DungeonPersistentState : public MapPersistentState
 
         time_t m_resetTime;
         bool m_canReset;
-        uint8 m_raidMode;
 
         /* the only reason the instSave-object links are kept is because
            the object-instSave links need to be broken at reset time
@@ -358,7 +347,7 @@ class MapPersistentStateManager : public MaNGOS::Singleton<MapPersistentStateMan
 
         // auto select appropriate MapPersistentState (sub)class by MapEntry, and autoselect appropriate way store (by instance/map id)
         // always return != nullptr
-        MapPersistentState* AddPersistentState(MapEntry const* mapEntry, uint32 instanceId, time_t resetTime, bool canReset, bool load = false, bool initPools = true, uint8 raidMode = RAID_MODE_40MAN);
+        MapPersistentState* AddPersistentState(MapEntry const* mapEntry, uint32 instanceId, time_t resetTime, bool canReset, bool load = false, bool initPools = true);
 
         // search stored state, can be nullptr in result
         MapPersistentState *GetPersistentState(uint32 mapId, uint32 InstanceId);
