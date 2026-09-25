@@ -14,7 +14,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <cstdarg>
 #include "Common.h"
 #include "Database/DatabaseEnv.h"
 #include "Database/DatabaseImpl.h"
@@ -35,8 +34,6 @@
 #include "PlayerDump.h"
 #include "CharacterDatabaseCache.h"
 #include "Config/Config.h"
-#include "BountyMgr.h"
-#include "playerbot/PlayerbotAI.h"
 
 #include <regex>
 #include <iterator>
@@ -6154,105 +6151,5 @@ bool ChatHandler::HandleMakgoraStatusCommand(char* /*args*/)
         PSendSysMessage("Pending Mak'gora duel request with %s.", player->m_duel->opponent ? player->m_duel->opponent->GetName() : "unknown");
     else if (player->IsInStartedMakgora())
         PSendSysMessage("You are fighting a Mak'gora against %s right now!", player->m_duel->opponent ? player->m_duel->opponent->GetName() : "unknown");
-    return true;
-}
-
-bool ChatHandler::HandleBountyCommand(char* args)
-{
-    if (args && *args)
-    {
-        char* cmd = ExtractOptNotLastArg(&args);
-        std::string command = cmd ? cmd : "";
-        if (command == "add" || command == "place")
-            return HandleBountyAddCommand(args);
-        else if (command == "check")
-            return HandleBountyCheckCommand(args);
-        else if (command == "list")
-            return HandleBountyListCommand(args);
-    }
-    return HandleBountyListCommand(args);
-}
-
-bool ChatHandler::HandleBountyListCommand(char* /*args*/)
-{
-    auto bounties = sBountyMgr.GetTopBounties(15);
-
-    PSendSysMessage("=== |cffffd700Realm Bounty Board|r ===");
-    if (bounties.empty())
-    {
-        PSendSysMessage("No active bounties at this time. Slay players in PvP or use |cffffd700.bounty add <name> <gold>|r to place a bounty!");
-        return true;
-    }
-
-    uint32 rank = 1;
-    for (const auto& entry : bounties)
-    {
-        PSendSysMessage("#%u: |cffff2020%s|r (Level %u) - |cffffd700%u Gold|r | Streak: %u | Zone: %s",
-                        rank++, entry.name.c_str(), entry.level, entry.bountyGold, entry.killstreak, entry.zoneName.c_str());
-    }
-    return true;
-}
-
-bool ChatHandler::HandleBountyAddCommand(char* args)
-{
-    Player* player = m_session ? m_session->GetPlayer() : nullptr;
-    if (!player)
-        return false;
-
-    Player* target = nullptr;
-    ObjectGuid target_guid;
-    if (!ExtractPlayerTarget(&args, &target, &target_guid))
-    {
-        PSendSysMessage("Syntax: .bounty add <player_name> <gold_amount>");
-        return true;
-    }
-
-    if (!target)
-    {
-        PSendSysMessage("Target player must be online.");
-        return true;
-    }
-
-    char* goldStr = ExtractOptNotLastArg(&args);
-    if (!goldStr)
-    {
-        PSendSysMessage("Syntax: .bounty add <player_name> <gold_amount>");
-        return true;
-    }
-
-    uint32 gold = atoi(goldStr);
-    if (gold == 0)
-    {
-        PSendSysMessage("Bounty amount must be at least 1 Gold.");
-        return true;
-    }
-
-    sBountyMgr.AddBounty(player, target, gold);
-    return true;
-}
-
-bool ChatHandler::HandleBountyCheckCommand(char* args)
-{
-    Player* player = m_session ? m_session->GetPlayer() : nullptr;
-    if (!player)
-        return false;
-
-    Player* target = nullptr;
-    ObjectGuid target_guid;
-    if (!ExtractPlayerTarget(&args, &target, &target_guid))
-        target = player;
-
-    if (!target)
-    {
-        PSendSysMessage("Target player not found.");
-        return true;
-    }
-
-    uint32 bounty = sBountyMgr.GetBountyAmount(target->GetObjectGuid());
-    uint32 streak = sBountyMgr.GetKillstreak(target->GetObjectGuid());
-
-    PSendSysMessage("=== Bounty Info: %s ===", target->GetName());
-    PSendSysMessage("Current Bounty: |cffffd700%u Gold|r", bounty);
-    PSendSysMessage("PvP Killstreak: %u", streak);
     return true;
 }

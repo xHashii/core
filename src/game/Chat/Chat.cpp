@@ -279,16 +279,6 @@ ChatCommand * ChatHandler::getCommandTable()
         { nullptr,          0,                  false, nullptr,                                           "", nullptr }
     };
 
-    static ChatCommand bountyCommandTable[] =
-    {
-        { "add",            SEC_PLAYER,         false, &ChatHandler::HandleBountyAddCommand,              "", nullptr },
-        { "place",          SEC_PLAYER,         false, &ChatHandler::HandleBountyAddCommand,              "", nullptr },
-        { "list",           SEC_PLAYER,         false, &ChatHandler::HandleBountyListCommand,             "", nullptr },
-        { "check",          SEC_PLAYER,         false, &ChatHandler::HandleBountyCheckCommand,            "", nullptr },
-        { "",               SEC_PLAYER,         false, &ChatHandler::HandleBountyCommand,                 "", nullptr },
-        { nullptr,          0,                  false, nullptr,                                           "", nullptr }
-    };
-
     static ChatCommand cheatCommandTable[] =
     {
         { "fly",            SEC_GAMEMASTER,     false, &ChatHandler::HandleCheatFlyCommand,               "", nullptr },
@@ -1238,8 +1228,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { "hardcore",       SEC_PLAYER,         false, nullptr,                                        "", hardcoreCommandTable },
         { "ssf",            SEC_PLAYER,         false, &ChatHandler::HandleHardcoreSSFCommand,         "", nullptr },
         { "makgora",        SEC_PLAYER,         false, nullptr,                                        "", makgoraCommandTable  },
-        { "bounty",         SEC_PLAYER,         false, nullptr,                                        "", bountyCommandTable   },
-        { "instance",       SEC_TICKETMASTER,   true, nullptr,                                         "", instanceCommandTable },
+        { "instance",       SEC_TICKETMASTER,   true, nullptr,                                        "", instanceCommandTable },
         { "learn",          SEC_MODERATOR,      false, nullptr,                                        "", learnCommandTable    },
         { "list",           SEC_TICKETMASTER,   true, nullptr,                                         "", listCommandTable     },
         { "lookup",         SEC_MODERATOR,      true, nullptr,                                         "", lookupCommandTable   },

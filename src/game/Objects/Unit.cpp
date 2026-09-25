@@ -23,7 +23,6 @@
 #include "Pet.h"
 #include "Totem.h"
 #include "Player.h"
-#include "BountyMgr.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "Log.h"
@@ -1260,32 +1259,6 @@ void Unit::Kill(Unit* pVictim, SpellEntry const* spellProto, bool durabilityLoss
             }
 
             winner->CombatStopWithPets(true);
-        }
-
-        // Bounty system kill tracking
-        Player* killerPlayer = pPlayerTap ? pPlayerTap : GetAffectingPlayer();
-        if (killerPlayer && killerPlayer != pPlayerVictim)
-        {
-            sBountyMgr.RecordPvPKill(killerPlayer, pPlayerVictim);
-
-            // If victim was a playerbot, it has a chance to place a revenge bounty on the killer
-            if (pPlayerVictim->GetPlayerbotAI() && !killerPlayer->IsFriendlyTo(pPlayerVictim))
-            {
-                if (urand(1, 100) <= 35)
-                {
-                    uint32 bountyGold = 5;
-                    if (killerPlayer->GetLevel() >= 40)
-                        bountyGold = 10;
-                    if (killerPlayer->GetLevel() >= 55)
-                        bountyGold = 25;
-
-                    uint32 streak = sBountyMgr.GetKillstreak(killerPlayer->GetObjectGuid());
-                    if (streak >= 3)
-                        bountyGold += (streak * 2);
-
-                    sBountyMgr.AddBotBounty(pPlayerVictim, killerPlayer, bountyGold);
-                }
-            }
         }
     }
 

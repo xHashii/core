@@ -354,7 +354,22 @@ void PopulateAreaBotAI::BeforeAddToMap(Player* player)
         float y = _y;
         float z = _z;
         Map* map = sMapMgr.CreateMap(_map, player);
-        while (!map->GetWalkRandomPosition(nullptr, x, y, z, _radius));
+        // Bounded retries: PathInfo::FindWalkPoly() rejects walkable polys more
+        // than 3m above the query point, so a seed Z below the actual ground
+        // makes GetWalkRandomPosition fail forever - an unbounded loop here
+        // would hard-lock the main thread (whole server unresponsive, no exit).
+        uint32 attempts = 0;
+        while (!map->GetWalkRandomPosition(nullptr, x, y, z, _radius) && ++attempts < 100);
+        if (attempts >= 100)
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR,
+                "PopulateAreaBotAI: no walkable position found near (%.1f, %.1f, %.1f) for bot %s - seed Z is likely below the ground",
+                _x, _y, _z, player->GetName());
+            x = _x;
+            y = _y;
+            float ground = map->GetHeight(_x, _y, _z);
+            z = (ground > -10000.0f) ? ground : _z;
+        }
         player->Relocate(x, y, z);
         player->SetLocationMapId(_map);
     }
@@ -372,8 +387,10 @@ PlayerBotAI* CreatePlayerBotAI(std::string ainame)
         return new MageOrgrimmarAttackerAI();
     if (ainame == "IronforgePopulationAI")
         return new PopulateAreaBotAI(0, -4928.5f, -946.6f, 501.6f, ALLIANCE, 100.0f);
+    // Seed Z must be close to the actual Trade District ground (~95-98):
+    // GetWalkRandomPosition fails forever when the seed is more than 3m below ground.
     if (ainame == "StormwindPopulationAI")
-        return new PopulateAreaBotAI(0, -8829.5f, 625.6f, 93.9f, ALLIANCE, 50.0f);
+        return new PopulateAreaBotAI(0, -8829.5f, 625.6f, 97.0f, ALLIANCE, 50.0f);
     if (ainame == "OrgrimmarPopulationAI")
         return new PopulateAreaBotAI(1, 1568, -4405.87f, 8.13f, HORDE, 150.0f);
     if (ainame == "PlayerBotFleeingAI")

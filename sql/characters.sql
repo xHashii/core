@@ -678,7 +678,6 @@ CREATE TABLE IF NOT EXISTS `instance` (
   `map` int(11) unsigned NOT NULL DEFAULT '0',
   `reset_time` bigint(40) NOT NULL DEFAULT '0',
   `data` longtext,
-  `raid_mode` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '0=40-man, 1=20-man (shared lockout)',
   PRIMARY KEY (`id`),
   KEY `idx_map` (`map`),
   KEY `idx_resettime` (`reset_time`)

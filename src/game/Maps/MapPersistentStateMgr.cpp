@@ -20,7 +20,6 @@
  */
 
 #include "MapPersistentStateMgr.h"
-#include "Maps/RaidMode.h"
 
 #include "Player.h"
 #include "GridNotifiers.h"
@@ -240,17 +239,9 @@ bool WorldPersistentState::CanBeUnload() const
 //== DungeonPersistentState functions =====================
 
 DungeonPersistentState::DungeonPersistentState(uint16 MapId, uint32 InstanceId, time_t resetTime, bool canReset)
-    : MapPersistentState(MapId, InstanceId), m_resetTime(resetTime), m_canReset(canReset), m_raidMode(RAID_MODE_40MAN)
+    : MapPersistentState(MapId, InstanceId), m_resetTime(resetTime), m_canReset(canReset)
 {
     ASSERT(MapId > 1);
-    // If the instance row already exists (loading a bound instance), restore persisted raid mode
-    if (InstanceId)
-    {
-        // best-effort: read raid_mode column if migration has run; ignore errors if column missing
-        if (auto result = CharacterDatabase.PQuery("SELECT `raid_mode` FROM `instance` WHERE `id` = '%u'", InstanceId))
-            if (Field* f = result->Fetch())
-                m_raidMode = uint8(f->GetUInt32());
-    }
 }
 
 DungeonPersistentState::~DungeonPersistentState()
@@ -296,96 +287,7 @@ void DungeonPersistentState::SaveToDB()
         }
     }
 
-    // Try to persist raid_mode if column exists (migration 202506_raid20man). Fall back to legacy INSERT if it fails.
-    // Use a single row insert; raid_mode defaults to 0 (40-man) for legacy rows.
-    bool ok = CharacterDatabase.DirectPExecute("INSERT INTO `instance` (`id`, `map`, `reset_time`, `data`, `raid_mode`) VALUES ('%u', '%u', '" UI64FMTD "', '%s', '%u')", GetInstanceId(), GetMapId(), (uint64)GetResetTimeForDB(), data.c_str(), uint32(m_raidMode));
-    if (!ok)
-        CharacterDatabase.PExecute("INSERT INTO `instance` (`id`, `map`, `reset_time`, `data`) VALUES ('%u', '%u', '" UI64FMTD "', '%s')", GetInstanceId(), GetMapId(), (uint64)GetResetTimeForDB(), data.c_str());
-}
-
-bool DungeonPersistentState::IsRaidModeConvertible() const
-{
-    return IsRaidModeConvertibleMap(GetMapId());
-}
-
-bool DungeonPersistentState::IsEncounterInProgress() const
-{
-    if (Map* map = GetMap())
-        if (InstanceData* iData = map->GetInstanceData())
-            return iData->IsEncounterInProgress();
-    // No map loaded => we treat as not in progress (safe to toggle before entry).
-    // If we have persisted encounter data, the next map load will block toggling.
-    return false;
-}
-
-bool DungeonPersistentState::CanToggleRaidMode(std::string& reason) const
-{
-    if (!sWorld.getConfig(CONFIG_BOOL_RAID_20MAN_ENABLE))
-    {
-        reason = "20-man raids are disabled on this realm.";
-        return false;
-    }
-    if (!IsRaidModeConvertible())
-    {
-        reason = "This raid cannot be converted to 20-man.";
-        return false;
-    }
-    if (sWorld.getConfig(CONFIG_BOOL_RAID_20MAN_PATCH_GATING))
-    {
-        uint8 need = RequiredPatchForRaid20Man(GetMapId());
-        if (sWorld.GetWowPatch() < need)
-        {
-            reason = "This raid's 20-man mode is not yet available on this patch.";
-            return false;
-        }
-    }
-    if (IsEncounterInProgress())
-    {
-        reason = "You cannot change the raid size while an encounter is in progress.";
-        return false;
-    }
-    // If anyone is currently inside, disallow toggling after first boss engagement.
-    // The NPC is placed outside the instance, so CanToggle is only called from there.
-    // Still, guard against edge case where instance already has players bound inside and data is non-empty.
-    if (Map* map = GetMap())
-    {
-        if (map->GetPlayersCountExceptGMs() > 0)
-        {
-            reason = "The instance is already in use.";
-            return false;
-        }
-        if (InstanceData* iData = map->GetInstanceData())
-        {
-            std::string d = iData->Save();
-            if (!d.empty() && d.find("0 0 0") == std::string::npos) // heuristic: any boss state beyond "not started"
-            {
-                // Fall back to strict IsEncounterInProgress already checked; allow fresh
-            }
-        }
-    }
-    if (GetPlayerCount() > 0 || GetGroupCount() > 0)
-    {
-        // Check if any bound player is currently inside the instance map (savestates already have players)
-        // For shared lockout we must not allow switching after a boss save exists.
-        // We conservatively block if instance has any bind and data is not clean.
-        // The DB data column is not cached here, so allow toggle when map not loaded (NPC outside will re-check after load).
-    }
-    return true;
-}
-
-bool DungeonPersistentState::SetRaidMode(uint8 mode)
-{
-    if (mode >= MAX_RAID_MODE)
-        return false;
-    if (m_raidMode == mode)
-        return true;
-    std::string reason;
-    if (!CanToggleRaidMode(reason))
-        return false;
-    m_raidMode = mode;
-    // Persist; best-effort update of raid_mode column (ignore if column missing on very old DB)
-    CharacterDatabase.DirectPExecute("UPDATE `instance` SET `raid_mode` = '%u' WHERE `id` = '%u'", uint32(m_raidMode), GetInstanceId());
-    return true;
+    CharacterDatabase.PExecute("INSERT INTO `instance` (`id`, `map`, `reset_time`, `data`) VALUES ('%u', '%u', '" UI64FMTD "', '%s')", GetInstanceId(), GetMapId(), (uint64)GetResetTimeForDB(), data.c_str());
 }
 
 void DungeonPersistentState::DeleteRespawnTimesAndData()
@@ -793,7 +695,7 @@ MapPersistentStateManager::~MapPersistentStateManager()
 - adding instance into manager
 - called from DungeonMap::Add, _LoadBoundInstances, LoadGroups
 */
-MapPersistentState* MapPersistentStateManager::AddPersistentState(MapEntry const* mapEntry, uint32 instanceId, time_t resetTime, bool canReset, bool load /*=false*/, bool initPools /*= true*/, uint8 raidMode /*= RAID_MODE_40MAN*/)
+MapPersistentState* MapPersistentStateManager::AddPersistentState(MapEntry const* mapEntry, uint32 instanceId, time_t resetTime, bool canReset, bool load /*=false*/, bool initPools /*= true*/)
 {
     if (MapPersistentState *old_save = GetPersistentState(mapEntry->id, instanceId))
     {
@@ -804,16 +706,12 @@ MapPersistentState* MapPersistentStateManager::AddPersistentState(MapEntry const
         return old_save;
     }
 
-    sLog.Out(LOG_BASIC, LOG_LVL_DEBUG, "MapPersistentStateManager::AddPersistentState: mapId = %d, instanceId = %d, reset time = %u, canRset = %u, raidMode=%u", mapEntry->id, instanceId, resetTime, canReset ? 1 : 0, uint32(raidMode));
+    sLog.Out(LOG_BASIC, LOG_LVL_DEBUG, "MapPersistentStateManager::AddPersistentState: mapId = %d, instanceId = %d, reset time = %u, canRset = %u", mapEntry->id, instanceId, resetTime, canReset ? 1 : 0);
 
     MapPersistentState *state;
     if (mapEntry->IsDungeon())
     {
         DungeonPersistentState* dungeonState = new DungeonPersistentState(mapEntry->id, instanceId, resetTime, canReset);
-        // If caller provided an explicit raid mode (e.g. loading from DB with known mode), apply it.
-        // Constructor already attempted to read from DB; explicit param overrides when not default or when loading.
-        if (raidMode != RAID_MODE_40MAN || load)
-            dungeonState->SetRaidModeDirect(raidMode);
         if (!load)
         {
             // initialize reset time

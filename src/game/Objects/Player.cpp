@@ -2862,6 +2862,21 @@ void Player::SetHardcore(bool on)
 
     if (IsInWorld())
         CharacterDatabase.PExecute("UPDATE characters SET extra_flags = %u WHERE guid = %u", m_ExtraFlags, GetGUIDLow());
+
+    UpdateHardcoreIndicator();
+}
+
+void Player::UpdateHardcoreIndicator()
+{
+    // Dead units cannot hold non-death-persistent auras (see Unit::AddAura),
+    // and IsInWorld() is false while loading from the DB, so guard only on life.
+    if (!IsAlive())
+        return;
+
+    if (IsHardcore() && !HasAura(SPELL_PLAYER_HARDCORE_INDICATOR))
+        AddAura(SPELL_PLAYER_HARDCORE_INDICATOR, ADD_AURA_PERMANENT);
+    else if (!IsHardcore() && HasAura(SPELL_PLAYER_HARDCORE_INDICATOR))
+        RemoveAurasDueToSpell(SPELL_PLAYER_HARDCORE_INDICATOR);
 }
 
 void Player::SetHardcoreDead(bool on)
@@ -4809,6 +4824,9 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness)
 
     RemoveGhostForm();
     SetRooted(false);
+
+    // Death strips non-passive auras; restore the Hardcore indicator if still enabled.
+    UpdateHardcoreIndicator();
 
     // set health/powers (0- will be set in caller)
     if (restore_percent > 0.0f)
@@ -15522,6 +15540,9 @@ bool Player::LoadFromDB(ObjectGuid guid, SqlQueryHolder* holder)
 
     if (sWorld.GetWowPatch() >= WOW_PATCH_112 && !HasCharacterFlag(CHARACTER_FLAG_MOUNT_UPGRADED))
         UpdateOldRidingSkillToNew(hasEpicMount);
+
+    // Sync the Hardcore indicator buff with the flags just loaded (no-op for non-hardcore chars).
+    UpdateHardcoreIndicator();
 
     return true;
 }
