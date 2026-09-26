@@ -88,6 +88,16 @@ void PlayerBotMgr::Load()
 
     // 4- LoadFromDB
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, ">> [PlayerBotMgr] Loading Bots ...");
+    // characters.sql gained this table without a migration. A database created
+    // before that hits ER_NO_SUCH_TABLE here, and HandleMySQLError aborts startup.
+    CharacterDatabase.DirectExecute(
+        "CREATE TABLE IF NOT EXISTS `playerbot` ("
+        " `char_guid` bigint(20) unsigned NOT NULL,"
+        " `chance` int(10) unsigned NOT NULL DEFAULT '10',"
+        " `comment` varchar(255) DEFAULT NULL,"
+        " `ai` varchar(50) DEFAULT NULL,"
+        " PRIMARY KEY (`char_guid`)"
+        ") ENGINE=MyISAM DEFAULT CHARSET=latin1");
     result = CharacterDatabase.PQuery(
                  "SELECT char_guid, chance, ai"
                  " FROM playerbot");

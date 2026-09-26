@@ -29,6 +29,7 @@
 #include "DatabaseEnv.h"
 #include "Timer.h"
 
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -46,6 +47,13 @@ void DrainExtraResults(MYSQL* mysql)
         if (MYSQL_RES* result = mysql_store_result(mysql))
             mysql_free_result(result);
     }
+}
+
+// Playerbot SQL is applied by hand from src/game/PlayerBots/sql and is not part
+// of the core migration set. A missing table must not abort world startup.
+bool IsOptionalPlayerbotTable(char const* error)
+{
+    return error && (strstr(error, "playerbot") || strstr(error, "ahbot_"));
 }
 }
 
@@ -213,6 +221,11 @@ bool MySQLConnection::HandleMySQLError(uint32 errNo)
         // Outdated table or database structure - terminate core
         case ER_BAD_FIELD_ERROR:
         case ER_NO_SUCH_TABLE:
+            if (errNo == ER_NO_SUCH_TABLE && IsOptionalPlayerbotTable(mysql_error(mMysql)))
+            {
+                sLog.Out(LOG_DBERROR, LOG_LVL_ERROR, "Optional playerbot table is missing (%s). Apply src/game/PlayerBots/sql to enable full bot support.", mysql_error(mMysql));
+                return false;
+            }
             sLog.Out(LOG_DBERROR, LOG_LVL_MINIMAL, "Your database structure is not up to date. Please make sure you have executed all the queries in the sql/updates folders.");
             ASSERT(false);
             return false;
