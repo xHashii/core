@@ -15288,6 +15288,15 @@ bool Player::LoadFromDB(ObjectGuid guid, SqlQueryHolder* holder)
 
     uint32 extraflags = fields[33].GetUInt32();
 
+    // Restore the Hardcore state persisted in extra_flags. The setters
+    // (SetHardcore/SetHardcoreDead/SetHardcoreSSF) write these bits directly
+    // to the characters table, but nothing below re-applies them (the GM and
+    // chat flags are only re-applied selectively from the local `extraflags`).
+    // Without this, the flags survived in the DB but were never copied back
+    // into m_ExtraFlags, so IsHardcore() silently turned false on every relog.
+    m_ExtraFlags |= (extraflags & (PLAYER_EXTRA_HARDCORE | PLAYER_EXTRA_HARDCORE_DEAD |
+                                   PLAYER_EXTRA_HARDCORE_SSF | PLAYER_EXTRA_HARDCORE_FORFEITED));
+
     m_stableSlots = fields[34].GetUInt32();
     if (m_stableSlots > MAX_PET_STABLES)
     {

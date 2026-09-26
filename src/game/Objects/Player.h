@@ -2165,11 +2165,14 @@ class Player final: public Unit
 
         // Hardcore Mode
         // Visual-only indicator buff (no mechanical effect) shown while Hardcore is enabled.
-        // Spell 65001 is a custom spell_template row (Apply Aura: DUMMY, infinite duration);
-        // unknown to the 2.4.3 client, so the buff slot renders with a blank icon/name.
-        // NB: spell_template.entry is SMALLINT UNSIGNED in the world DB (max 65535),
-        // so this id cannot be 80001 - see migration 20260923160000.
-        #define SPELL_PLAYER_HARDCORE_INDICATOR 65001
+        // Reuses Blizzard's own unused spell "Death Touch" (entry 5): it exists in the
+        // 1.12.1 client's Spell.dbc with a proper name/icon and, unlike most leftover
+        // dummy spells, is NOT flagged aura-hidden, so the client's buff frame renders it.
+        // The server-side spell_template row is reshaped into a permanent Apply-Aura-Dummy
+        // badge by migration 20260926130000_world. Do NOT use a custom spell id here:
+        // the client cannot render auras for spell ids that have no Spell.dbc record
+        // (that is why the previous custom id 65001 "Omen of Mortality" never showed).
+        #define SPELL_PLAYER_HARDCORE_INDICATOR 5
         bool IsHardcore() const;
         void SetHardcore(bool on);
         bool IsHardcoreDead() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_DEAD) != 0; }
