@@ -1750,12 +1750,30 @@ void ScriptMgr::LoadEventIdScripts()
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, ">> Loaded %u scripted event id", count);
 }
 
+// DB script_name values are VARCHAR and can carry a trailing CR/space from a
+// hand edit. Trim so the C++ name and the stored name compare equal.
+static std::string NormalizeScriptName(char const* name)
+{
+    if (!name || !*name)
+        return std::string();
+
+    std::string normalized(name);
+    size_t begin = 0;
+    while (begin < normalized.size() && (normalized[begin] == ' ' || normalized[begin] == '\t' || normalized[begin] == '\r' || normalized[begin] == '\n'))
+        ++begin;
+
+    size_t end = normalized.size();
+    while (end > begin && (normalized[end - 1] == ' ' || normalized[end - 1] == '\t' || normalized[end - 1] == '\r' || normalized[end - 1] == '\n'))
+        --end;
+
+    return normalized.substr(begin, end - begin);
+}
+
 void ScriptMgr::LoadScriptNames()
 {
     m_scriptNames.emplace_back("");
 
     BarGoLink bar(6);
-    uint32 count = 0;
     char const* tableNames[6] =
     {
         "areatrigger_template",
@@ -1776,12 +1794,20 @@ void ScriptMgr::LoadScriptNames()
 
         do
         {
-            ++count;
-            m_scriptNames.emplace_back((*result)[0].GetString());
+            std::string scriptName = NormalizeScriptName((*result)[0].GetString());
+            if (!scriptName.empty())
+                m_scriptNames.emplace_back(std::move(scriptName));
         } while (result->NextRow());
     }
 
+    // DISTINCT is per table, so the same script_name can be inserted once for
+    // creature_template and again for spell_template / gameobject_template.
+    // GetScriptId() returns only the first match. Collapse duplicates here so
+    // every later lookup and the C++ registration share one slot.
     std::sort(m_scriptNames.begin(), m_scriptNames.end());
+    m_scriptNames.erase(std::unique(m_scriptNames.begin(), m_scriptNames.end()), m_scriptNames.end());
+
+    uint32 count = m_scriptNames.empty() ? 0 : uint32(m_scriptNames.size() - 1);
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "");
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, ">> Loaded %d Script Names", count);
 }
@@ -1790,13 +1816,14 @@ uint32 ScriptMgr::GetScriptId(char const* name) const
 {
     // use binary search to find the script name in the sorted vector
     // assume "" is the first element
-    if (!name)
+    std::string normalized = NormalizeScriptName(name);
+    if (normalized.empty())
         return 0;
 
     ScriptNameMap::const_iterator itr =
-        std::lower_bound(m_scriptNames.begin(), m_scriptNames.end(), name);
+        std::lower_bound(m_scriptNames.begin(), m_scriptNames.end(), normalized);
 
-    if (itr == m_scriptNames.end() || *itr != name)
+    if (itr == m_scriptNames.end() || *itr != normalized)
         return 0;
 
     return uint32(itr - m_scriptNames.begin());
@@ -2116,6 +2143,22 @@ void ScriptMgr::Initialize()
     m_scripts.resize(GetScriptIdsCount(), nullptr);
 
     AddScripts();
+
+    // RegisterSelf binds the first index GetScriptId returns. If a name still
+    // occupies another slot, copy the already registered script onto it so
+    // the check below does not report a script that did register.
+    for (uint32 i = 1; i < GetScriptIdsCount(); ++i)
+    {
+        if (m_scripts[i])
+            continue;
+
+        uint32 bound = GetScriptId(GetScriptName(i));
+        if (!bound || bound == i || !m_scripts[bound])
+            continue;
+
+        m_scripts[i] = new Script(*m_scripts[bound]);
+        ++num_sc_scripts;
+    }
 
     // Check existance scripts for all registered by core script names
     for (uint32 i = 1; i < GetScriptIdsCount(); ++i)
@@ -2785,19 +2828,33 @@ void DoOrSimulateScriptTextForMap(int32 textId, uint32 creatureId, Map* pMap, Cr
 
 void Script::RegisterSelf(bool bReportError)
 {
-    if (uint32 id = sScriptMgr.GetScriptId(Name.c_str()))
-    {
-        m_scripts[id] = this;
-        ++num_sc_scripts;
-    }
-    else
+    uint32 id = sScriptMgr.GetScriptId(Name.c_str());
+    if (!id)
     {
         // Don't report unused generic scripts
         if (bReportError)
             sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Script registering but script_name %s is not assigned in database. Script will not be used.", Name.c_str());
 
         delete this;
+        return;
     }
+
+    // Bind every slot that carries this name. lower_bound only returns the
+    // first, and a leftover null slot is logged as "No script found".
+    std::string registered = NormalizeScriptName(Name.c_str());
+    bool stored = false;
+    for (uint32 i = id; i < m_scripts.size() && registered == sScriptMgr.GetScriptName(i); ++i)
+    {
+        if (m_scripts[i])
+            continue;
+
+        m_scripts[i] = stored ? new Script(*this) : this;
+        ++num_sc_scripts;
+        stored = true;
+    }
+
+    if (!stored)
+        delete this;
 }
 
 // Returns a target based on the type specified.
