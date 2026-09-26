@@ -2165,9 +2165,11 @@ class Player final: public Unit
 
         // Hardcore Mode
         // Visual-only indicator buff (no mechanical effect) shown while Hardcore is enabled.
-        // Spell 80001 is a custom spell_template row (Apply Aura: DUMMY, infinite duration);
+        // Spell 65001 is a custom spell_template row (Apply Aura: DUMMY, infinite duration);
         // unknown to the 2.4.3 client, so the buff slot renders with a blank icon/name.
-        #define SPELL_PLAYER_HARDCORE_INDICATOR 80001
+        // NB: spell_template.entry is SMALLINT UNSIGNED in the world DB (max 65535),
+        // so this id cannot be 80001 - see migration 20260923160000.
+        #define SPELL_PLAYER_HARDCORE_INDICATOR 65001
         bool IsHardcore() const;
         void SetHardcore(bool on);
         bool IsHardcoreDead() const { return (m_ExtraFlags & PLAYER_EXTRA_HARDCORE_DEAD) != 0; }

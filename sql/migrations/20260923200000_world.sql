@@ -20,7 +20,7 @@ INSERT INTO `migrations` VALUES ('20260923200000');
 -- These NPCs had no DB gossip rows (gossip_menu_id = 0, gossip is
 -- code-driven), so only creature_template and creature rows exist.
 -- The Hardcore Watcher of Mortality (80000) and the Hardcore buff
--- spell (80001) are NOT touched.
+-- spell (65001) are NOT touched.
 -- ============================================================
 
 DELETE FROM `creature_template` WHERE `entry` = 80001;
