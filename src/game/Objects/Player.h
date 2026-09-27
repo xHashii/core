@@ -2164,14 +2164,16 @@ class Player final: public Unit
         uint32 GetExtraFlags() const { return m_ExtraFlags; }
 
         // Hardcore Mode
-        // Visual-only indicator buff (no mechanical effect) shown while Hardcore is enabled.
-        // Reuses Blizzard's own unused spell "Death Touch" (entry 5): it exists in the
-        // 1.12.1 client's Spell.dbc with a proper name/icon and, unlike most leftover
-        // dummy spells, is NOT flagged aura-hidden, so the client's buff frame renders it.
+        // Visual-only indicator aura (no mechanical effect) shown in the buff bar while
+        // Hardcore is enabled. Reuses Blizzard's existing client-side Spell.dbc entry 5
+        // (originally the unused GM test spell "Death Touch") because the 1.12.1 client
+        // cannot render auras for spell ids that have no Spell.dbc record (which is why
+        // the earlier custom id 65001 "Omen of Mortality" never showed).
         // The server-side spell_template row is reshaped into a permanent Apply-Aura-Dummy
-        // badge by migration 20260926130000_world. Do NOT use a custom spell id here:
-        // the client cannot render auras for spell ids that have no Spell.dbc record
-        // (that is why the previous custom id 65001 "Omen of Mortality" never showed).
+        // badge with icon Spell_Shadow_CorpseExplode (icon id 136133) by migration
+        // 20260927120000_world (which supersedes the icon/name from migration
+        // 20260926130000_world). The aura does nothing mechanically - it exists solely
+        // as a permanent badge in the player's buff frame.
         #define SPELL_PLAYER_HARDCORE_INDICATOR 5
         bool IsHardcore() const;
         void SetHardcore(bool on);

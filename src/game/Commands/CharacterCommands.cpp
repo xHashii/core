@@ -2636,7 +2636,7 @@ bool ChatHandler::HandleLearnAllCommand(char* /*args*/)
 
 static uint32 gmSpellList[] =
 {
-    5,      // Death Touch
+    5,      // Hardcore indicator (formerly Death Touch; GM instakill is done via direct damage in .die)
     265,    // Area Death (TEST)
     30879,  // Permanent Area Damage 50k
     7482,   // dmg
