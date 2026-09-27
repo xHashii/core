@@ -2165,15 +2165,26 @@ class Player final: public Unit
 
         // Hardcore Mode
         // Visual-only indicator aura (no mechanical effect) shown in the buff bar while
-        // Hardcore is enabled. Reuses Blizzard's existing client-side Spell.dbc entry 5
-        // (originally the unused GM test spell "Death Touch") because the 1.12.1 client
-        // cannot render auras for spell ids that have no Spell.dbc record (which is why
-        // the earlier custom id 65001 "Omen of Mortality" never showed).
-        // The server-side spell_template row is reshaped into a permanent Apply-Aura-Dummy
-        // badge with icon Spell_Shadow_CorpseExplode (icon id 136133) by migration
-        // 20260927120000_world (which supersedes the icon/name from migration
-        // 20260926130000_world). The aura does nothing mechanically - it exists solely
-        // as a permanent badge in the player's buff frame.
+        // Hardcore is enabled.
+        //
+        // It MUST keep using Blizzard's client-side Spell.dbc entry 5 (the unused GM test
+        // spell "Death Touch"): both supported clients build their buff frame from their
+        // own DBCs and silently drop auras whose spell id has no record there, which is
+        // why the earlier custom id 65001 "Omen of Mortality" never showed. For the very
+        // same reason the name, rank, icon and description a player sees always come from
+        // the client's DBC - `spell_template` never reaches the client, so renaming the
+        // row to 'Hardcore' (migration 20260927120000_world) does NOT rename the buff.
+        //
+        // The badge is relabelled client side instead, by addons/Hardcore (one build per
+        // client: 1.12.1 and 1.14.2). It finds entry 5 in the player's buff list and
+        // rewrites its icon and tooltip to "Hardcore". Players without that addon still
+        // see Blizzard's own "Death Touch" icon and tooltip; the server cannot do better
+        // than pick the spell id and keep the aura alive.
+        //
+        // Server side the row is a permanent Apply Aura: DUMMY with
+        // SPELL_CUSTOM_POSITIVE (buff slot, migration 20260926130000_world) and
+        // SPELL_ATTR_NO_AURA_CANCEL (cannot be right-clicked away, migration
+        // 20260927130000_world). It does nothing mechanically.
         #define SPELL_PLAYER_HARDCORE_INDICATOR 5
         bool IsHardcore() const;
         void SetHardcore(bool on);

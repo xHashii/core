@@ -2636,7 +2636,16 @@ bool ChatHandler::HandleLearnAllCommand(char* /*args*/)
 
 static uint32 gmSpellList[] =
 {
-    5,      // Hardcore indicator (formerly Death Touch; GM instakill is done via direct damage in .die)
+    // NOTE: spell 5 used to be listed here as the GM instakill ("Death Touch").
+    // Its Instakill effect is gone: entry 5 is now the permanent Hardcore
+    // indicator aura (SPELL_PLAYER_HARDCORE_INDICATOR, Apply Aura: Dummy),
+    // applied by the server itself in Player::UpdateHardcoreIndicator().
+    // Keeping it here would hand a do-nothing "Death Touch" spell to every GM
+    // running .learn allgm and - worse - .unlearn allgm would strip a Hardcore
+    // character's badge through RemoveSpell() -> RemoveAurasDueToSpell().
+    // The client still labels that aura "Death Touch" (name and icon come from
+    // the client's own Spell.dbc, never from spell_template); addons/Hardcore
+    // relabels it on 1.12.1 and 1.14 clients. Use .die / direct damage to kill.
     265,    // Area Death (TEST)
     30879,  // Permanent Area Damage 50k
     7482,   // dmg
