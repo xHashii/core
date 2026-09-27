@@ -1,0 +1,10 @@
+## Interface: 11402
+## Title: Hardcore Badge
+## Notes: Renames the server's permanent Hardcore indicator buff (spell id 5) so it no longer reads "Death Touch". Classic Era 1.14.2 (build 42597) client build.
+## Author: Arena
+## Version: 1.0
+## SavedVariablesPerCharacter: HardcoreBadgeDB
+## X-Client: 1.14.2 (build 42597)
+## X-Command: /hardcore
+
+Hardcore.lua
