@@ -2144,7 +2144,7 @@ std::vector<BattleBotPath*> const vPaths_AV =
 {
     &vPath_AV_Horde_Cave_to_Tower_Point_Crossroad,
     &vPath_AV_Tower_Point_Crossroads_to_Tower_Point_Bottom,
-    //&vPath_AV_TowerPoint_Bottom_to_Tower_Point_Flag,
+    &vPath_AV_TowerPoint_Bottom_to_Tower_Point_Flag,
     &vPath_AV_Tower_Point_Bottom_to_Frostwolf_Graveyard_Flag,
     &vPath_AV_Frostwolf_Graveyard_to_Frostwolf_Graveyard_Flag,
     &vPath_AV_Tower_Point_Crossroads_to_Iceblood_Graveyard_Flag,
@@ -2206,6 +2206,7 @@ static bool IsAvQuesterForbiddenPath(BattleBotPath const* path)
     return
         // Horde tower capture branches.
         path == &vPath_AV_Horde_Base_First_Crossroads_to_East_Frostwolf_Tower_Flag || path == &vPath_AV_Horde_Base_First_Crossroads_to_West_Frostwolf_Tower_Flag ||
+        path == &vPath_AV_TowerPoint_Bottom_to_Tower_Point_Flag ||
 
         // Horde base combat objectives.
         path == &vPath_AV_Horde_Base_Second_Crossroads_to_Horde_Base_Entrance_DrekThar || path == &vPath_AV_Horde_Base_Second_Crossroads_to_Horde_Base_DrekThar1 || path == &vPath_AV_Horde_Base_Second_Crossroads_to_Horde_Base_DrekThar2 || path == &vPath_AV_Horde_Base_Second_Crossroads_to_Horde_Base_Graveyard_Flag ||
@@ -3036,8 +3037,42 @@ if (getName() == "check objective")
             Creature* captain = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(captainEvent, 0));
 
             bool captainEngaged = captain && captain->GetHealth() > 0 && sServerFacade.IsInCombat(captain);
+            bool captainDead = bg->IsActiveEvent(captainDeadEvent, 0);
 
-            if ((!supporter || captainEngaged) && !bg->IsActiveEvent(captainDeadEvent, 0))
+            if (captainDead)
+            {
+                WorldLocation waitingLocation;
+
+                if (sRandomPlayerbotMgr.GetNamedLocation(waitingName, waitingLocation))
+                {
+                    float waitDx = pos.x - waitingLocation.x;
+                    float waitDy = pos.y - waitingLocation.y;
+                    float waitDz = pos.z - waitingLocation.z;
+
+                    bool objectiveIsWaiting = (waitDx * waitDx + waitDy * waitDy + waitDz * waitDz) < 25.0f;
+
+                    bool objectiveIsCaptain = false;
+
+                    if (captain)
+                    {
+                        float captainDx = pos.x - captain->GetPositionX();
+                        float captainDy = pos.y - captain->GetPositionY();
+                        float captainDz = pos.z - captain->GetPositionZ();
+
+                        objectiveIsCaptain = (captainDx * captainDx + captainDy * captainDy + captainDz * captainDz) < 25.0f;
+                    }
+
+                    if (objectiveIsWaiting || objectiveIsCaptain)
+                    {
+                        pos.Reset();
+                        posMap["bg objective"] = pos;
+
+                        return selectObjective(true);
+                    }
+                }
+            }
+
+            if ((!supporter || captainEngaged) && !captainDead)
             {
                 WorldLocation waitingLocation;
 

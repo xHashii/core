@@ -25,6 +25,7 @@
 #include "Player.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/PlayerbotFactory.h"
 #include "Log.h"
 #include "Opcodes.h"
 #include "WorldPacket.h"
@@ -2869,6 +2870,16 @@ void Unit::SetFacingTo(float ori)
 {
     m_movementInfo.ChangeOrientation(ori);
 
+    if (Player* player = ToPlayer())
+    {
+        if (player->IsBot())
+        {
+            SetOrientation(ori);
+            SendMovementPacket(MSG_MOVE_SET_FACING);
+            return;
+        }
+    }
+
     Movement::MoveSplineInit init(*this, "SetFacingTo");
     if (GenericTransport* t = GetTransport())
         init.SetTransport(t->GetGUIDLow());
@@ -4999,7 +5010,18 @@ void Unit::SetPet(Pet* pet)
     if (pet)
         pet->SetWorldMask(GetWorldMask());
     if (IsPlayer())
+    {
         ApplyModByteFlag(PLAYER_FIELD_BYTES, PLAYER_FIELD_BYTES_OFFSET_FLAGS, PLAYER_FIELD_BYTE_CONTROLLING_PET, pet != nullptr);
+
+        Player* player = ToPlayer();
+        WorldSession* session = player->GetSession();
+        if (pet && player->GetClass() == CLASS_WARLOCK &&
+            (player->GetPlayerbotAI() || (session && !session->GetSocket())))
+        {
+            PlayerbotFactory factory(player, player->GetLevel());
+            factory.InitPetSpells(pet);
+        }
+    }
 }
 
 void Unit::SetCharm(Unit* pet)
@@ -9211,6 +9233,15 @@ void Unit::StopMoving(bool force)
         init.Launch();
 
         DisableSpline();
+
+        if (Player* player = ToPlayer())
+        {
+            if (player->IsBot())
+            {
+                player->SetPosition(m_movementInfo.pos.x, m_movementInfo.pos.y,
+                                    m_movementInfo.pos.z, m_movementInfo.pos.o);
+            }
+        }
     }
 }
 

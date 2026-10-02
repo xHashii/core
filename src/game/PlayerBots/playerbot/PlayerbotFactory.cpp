@@ -256,6 +256,8 @@ void PlayerbotFactory::Randomize(bool incremental, bool syncWithMaster)
     sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Initializing spells (step 2)...");
     InitAvailableSpells();
     InitSpecialSpells();
+    AutoLearnSpellAction repairAction(ai);
+    repairAction.RepairPriestRacialSpells();
     pmo.reset();
 
     if (isRealRandomBot)
@@ -689,13 +691,13 @@ void PlayerbotFactory::InitPet()
     }
 }
 
-void PlayerbotFactory::InitPetSpells()
+void PlayerbotFactory::InitPetSpells(Pet* initializedPet)
 {
     Map* map = bot->GetMap();
     if (!map)
         return;
 
-    Pet* pet = bot->GetPet();
+    Pet* pet = initializedPet ? initializedPet : bot->GetPet();
     if (!pet)
         return;
 
@@ -1628,7 +1630,7 @@ if (bot->GetClass() == CLASS_WARLOCK)
         const auto& petSpellListItr = spellList.find(pet->GetEntry());
         if (petSpellListItr != spellList.end())
         {
-            const auto& petSpellList = petSpellListItr->second;
+            std::map<uint32, uint32> expectedSpells;
             for (const auto& pair : petSpellListItr->second)
             {
                 const uint32& levelRequired = pair.first;
@@ -1636,8 +1638,37 @@ if (bot->GetClass() == CLASS_WARLOCK)
 
                 if (pet->GetLevel() >= levelRequired)
                 {
-                    pet->AddSpell(spellID);
+                    uint32 firstSpell = sSpellMgr.GetFirstSpellInChain(spellID);
+                    std::map<uint32, uint32>::iterator expectedSpell = expectedSpells.find(firstSpell);
+                    if (expectedSpell == expectedSpells.end() || sSpellMgr.IsHighRankOfSpell(spellID, expectedSpell->second))
+                        expectedSpells[firstSpell] = spellID;
                 }
+            }
+
+            bool spellsAdded = false;
+            for (const auto& expectedSpell : expectedSpells)
+            {
+                if (pet->AddSpell(expectedSpell.second))
+                    spellsAdded = true;
+            }
+
+            bool autocastChanged = false;
+            for (PetSpellMap::const_iterator itr = pet->m_petSpells.begin(); itr != pet->m_petSpells.end(); ++itr)
+            {
+                if (itr->second.state == PETSPELL_REMOVED || IsPassiveSpell(itr->first))
+                    continue;
+
+                const bool wasEnabled = itr->second.active == ACT_ENABLED;
+                const uint8 autoSpellCount = pet->GetPetAutoSpellSize();
+                pet->ToggleAutocast(itr->first, true);
+                if (!wasEnabled || pet->GetPetAutoSpellSize() != autoSpellCount)
+                    autocastChanged = true;
+            }
+
+            if (spellsAdded || autocastChanged)
+            {
+                pet->CleanupActionBar();
+                bot->PetSpellInitialize();
             }
         }
     }
@@ -2607,19 +2638,27 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool syncWithMaster, bool
 
                 if (incremental || !progressiveGear)
                 {
-                    // sort items based on stat value, ilvl or quality
-                    std::sort(ids.begin(), ids.end(), [specId](int a, int b)
+                    ids.erase(std::remove_if(ids.begin(), ids.end(),
+                        [](uint32 itemId)
                         {
-                            uint32 baseCompareA = (sRandomItemMgr.GetStatWeight(a, specId) + sRandomItemMgr.GetBestRandomEnchantStatWeight(a, specId)) * 1000;
-                            uint32 baseCompareB = (sRandomItemMgr.GetStatWeight(b, specId) + sRandomItemMgr.GetBestRandomEnchantStatWeight(b, specId)) * 1000;
-                            if (baseCompareA < baseCompareB)
-                                return true;
+                            return !sObjectMgr.GetItemPrototype(itemId);
+                        }), ids.end());
 
+                    // sort items based on stat value, ilvl or quality
+                    std::sort(ids.begin(), ids.end(), [specId](uint32 a, uint32 b)
+                        {
                             ItemPrototype const* proto1 = sObjectMgr.GetItemPrototype(a);
                             ItemPrototype const* proto2 = sObjectMgr.GetItemPrototype(b);
 
-                            baseCompareA += proto1->Quality * proto1->ItemLevel;
-                            baseCompareB += proto2->Quality * proto2->ItemLevel;
+                            uint64 baseCompareA =
+                                (uint64)sRandomItemMgr.GetStatWeight(a, specId) +
+                                sRandomItemMgr.GetBestRandomEnchantStatWeight(a, specId);
+                            uint64 baseCompareB =
+                                (uint64)sRandomItemMgr.GetStatWeight(b, specId) +
+                                sRandomItemMgr.GetBestRandomEnchantStatWeight(b, specId);
+
+                            baseCompareA = baseCompareA * 1000 + (uint64)proto1->Quality * proto1->ItemLevel;
+                            baseCompareB = baseCompareB * 1000 + (uint64)proto2->Quality * proto2->ItemLevel;
 
                             return baseCompareA < baseCompareB;
                         });

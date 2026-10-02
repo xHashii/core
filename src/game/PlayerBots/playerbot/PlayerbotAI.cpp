@@ -64,6 +64,33 @@
 
 using namespace ai;
 
+static bool IsOffensiveUnitSpellOnSelf(SpellEntry const* spellInfo, Unit* target, Unit* caster)
+{
+    if (!spellInfo || target != caster)
+        return false;
+
+    bool hasExplicitUnitTarget = false;
+    bool hasExplicitNegativeTarget = false;
+
+    for (uint8 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        if (!spellInfo->Effect[i])
+            continue;
+
+        uint32 targetA = spellInfo->EffectImplicitTargetA[i];
+        uint32 targetB = spellInfo->EffectImplicitTargetB[i];
+
+        if (Spells::IsExplicitlySelectedUnitTarget(targetA) || Spells::IsExplicitlySelectedUnitTarget(targetB))
+            hasExplicitUnitTarget = true;
+
+        if (Spells::IsExplicitNegativeTarget(targetA) || Spells::IsExplicitNegativeTarget(targetB))
+            hasExplicitNegativeTarget = true;
+    }
+
+    return hasExplicitUnitTarget &&
+           (hasExplicitNegativeTarget || !spellInfo->IsPositiveSpell(caster, target));
+}
+
 std::vector<std::string>& split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
 char * strstri (std::string str1, std::string str2);
@@ -396,6 +423,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     }
     else if (isMoving)
     {
+        if (!bot->IsTaxiFlying())
+            StopMoving();
+
         isMoving = false;
     }
 
@@ -617,9 +647,14 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // Only update the internal ai when no reaction is running and the internal ai can be updated
     if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())
     {
-        // Update the delay with the spell cast time
+        // Keep the AI idle while a timed spell or channel is in progress.
         Spell* currentSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
-        if (currentSpell && (currentSpell->getState() == SPELL_STATE_CASTING) && (currentSpell->GetCastedTime() > 0U))
+        if (!currentSpell || currentSpell->getState() == SPELL_STATE_FINISHED ||
+            currentSpell->getState() == SPELL_STATE_DELAYED || !currentSpell->GetCastedTime())
+            currentSpell = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+
+        if (currentSpell && (currentSpell->getState() == SPELL_STATE_PREPARING || currentSpell->getState() == SPELL_STATE_CASTING) &&
+            currentSpell->GetCastedTime() > 0U)
         {
             SetAIInternalUpdateDelay(currentSpell->GetCastedTime() + sPlayerbotAIConfig.reactDelay + sWorld.GetAverageDiff());
 
@@ -4288,6 +4323,15 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
         return false;
     }
 
+    SpellEntry const *spellInfo = sServerFacade.LookupSpellInfo(spellid);
+    if (IsOffensiveUnitSpellOnSelf(spellInfo, target ? target : bot, bot))
+    {
+        if (checkResult)
+            *checkResult = SPELL_FAILED_TARGET_FRIENDLY;
+
+        return false;
+    }
+
     Pet* pet = bot->GetPet();
     if (pet && pet->HasSpell(spellid) && pet->IsSpellReady(spellid))
     {
@@ -4337,7 +4381,6 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, uint8 effectMask, b
         return false;
     }
 
-	SpellEntry const *spellInfo = sServerFacade.LookupSpellInfo(spellid);
 	if (!spellInfo)
     {
         if (checkResult)
@@ -4772,6 +4815,10 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
     if (!target)
         target = bot;
 
+    const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
+    if (IsOffensiveUnitSpellOnSelf(pSpellInfo, target, bot))
+        return false;
+
     Pet* pet = bot->GetPet();
     if (pet && pet->HasSpell(spellId))
     {
@@ -4803,7 +4850,6 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
     if (!sServerFacade.IsInFront(bot, faceTo, sPlayerbotAIConfig.sightDistance, CAST_ANGLE_IN_FRONT))
     {
         sServerFacade.SetFacingTo(bot, faceTo);
-        if (!HasRealPlayerMaster()) failWithDelay = true;
     }
 
     if (failWithDelay)
@@ -4821,7 +4867,6 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         return false;
     }
 
-    const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
     Spell *spell = new Spell(bot, pSpellInfo, false);
 
     SpellCastTargets targets;
@@ -4906,8 +4951,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
 
         StopMoving();
 
-        // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        if (!HasActivePlayerMaster() && sServerFacade.isMoving(bot))
         {
             if (waitForSpell)
             {
@@ -8795,6 +8839,13 @@ void PlayerbotAI::StopMoving()
         bot->m_movementInfo.SetMovementFlags(MOVEFLAG_NONE);
 
     bot->StopMoving();
+    MovementInfo mInfo = bot->m_movementInfo;
+    WorldPacket data(MSG_MOVE_STOP);
+#ifdef MANGOSBOT_TWO
+    data << bot->GetObjectGuid().WriteAsPacked();
+#endif
+    data << mInfo;
+    { WorldPackets::Movement::MovementPacket movePkt; movePkt.ReadFromWorldPacket(data); bot->GetSession()->HandleMovementOpcodes(movePkt); };
 
     if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType())
     {

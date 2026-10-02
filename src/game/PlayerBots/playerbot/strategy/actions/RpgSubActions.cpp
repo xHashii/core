@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include <ctime>
 #include "Objects/TradeData.h"
 #include "RpgSubActions.h"
 #include "ChooseRpgTargetAction.h"
@@ -12,11 +13,26 @@
 #include "GuildCreateActions.h"
 #include "SocialMgr.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/ServerFacade.h"
 #include "SayAction.h"
 #include "playerbot/PlayerbotLLMInterface.h"
+#include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/strategy/values/ItemUsageValue.h"
+#include "playerbot/strategy/values/TradeValues.h"
+#include "AIPlayAction.h"
+#include <memory>
 
 
 using namespace ai;
+
+namespace
+{
+    struct RpgChatGenerationReservation
+    {
+        RpgChatGenerationReservation() { PlayerbotLLMInterface::ReserveChatGeneration(); }
+        ~RpgChatGenerationReservation() { PlayerbotLLMInterface::FinishChatGeneration(); }
+    };
+}
 
 void RpgHelper::BeforeExecute()
 {
@@ -546,9 +562,26 @@ bool RpgAIChatAction::RequestNewLines()
     }
 
     Player* owner = ai->GetMaster();
-    bool processForAIPlay = ai->HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT);
+    const bool passReplyToAIPlay = botIstalking && ai->HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT);
+    ObjectGuid botGuid = bot->GetObjectGuid();
+    ObjectGuid ownerGuid = owner ? owner->GetObjectGuid() : ObjectGuid();
     std::string responseSpeakerName = botIstalking ? bot->GetName() : unit->GetName();
-    futPackets = std::async(std::launch::async, ChatReplyAction::GenerateResponsePacketsAIPlay, json, chatTemplate, emoteTemplate, systemTemplate, startPattern, endPattern, deletePattern, splitPattern, bot->GetObjectGuid(), owner ? owner->GetObjectGuid() : ObjectGuid(), responseSpeakerName, processForAIPlay, debug);
+    auto chatReservation = std::make_shared<RpgChatGenerationReservation>();
+    futPackets = std::async(std::launch::async,
+        [chatReservation = std::move(chatReservation), json, chatTemplate, emoteTemplate, systemTemplate,
+         startPattern, endPattern, deletePattern, splitPattern, botGuid, ownerGuid,
+         responseSpeakerName, passReplyToAIPlay, debug]() mutable
+        {
+            auto activeChat = std::move(chatReservation);
+            std::string lastReplyLine;
+            delayedPackets result = ChatReplyAction::GenerateResponsePacketsAIChat(json, chatTemplate, emoteTemplate,
+                systemTemplate, startPattern, endPattern, deletePattern, splitPattern,
+                responseSpeakerName, debug, &lastReplyLine);
+            activeChat.reset();
+            if (passReplyToAIPlay && !lastReplyLine.empty())
+                AIPlayAction::QueueGeneratedResponse(botGuid, ownerGuid, lastReplyLine);
+            return result;
+        });
 
     if (!urand(0, 10))
         chatLine += urand(-2, 2) * 2;
@@ -749,6 +782,128 @@ bool RpgTradeUsefulAction::Execute(Event& event)
     DoDelay();
 
     return isTrading;
+}
+
+bool RpgSaleOfferAction::isPossible()
+{
+    return !!AI_VALUE(ObjectGuid, "new player nearby");
+}
+
+bool RpgSaleOfferAction::isUseful()
+{
+    if (!isPossible() || !sRandomPlayerbotMgr.IsRandomBot(bot) || ai->HasActivePlayerMaster() || bot->IsInCombat() || bot->GetTrader())
+        return false;
+
+    ObjectGuid newPlayer = AI_VALUE(ObjectGuid, "new player nearby");
+    Player* player = dynamic_cast<Player*>(ai->GetWorldObject(newPlayer));
+    if (!player || !ai->IsSafe(player) || !player->IsWithinLOSInMap(bot))
+        return false;
+
+    if (sPlayerbotAIConfig.whisperDistance && !bot->GetGroup() && sRandomPlayerbotMgr.IsFreeBot(bot) &&
+        player->GetSession()->GetSecurity() < SEC_GAMEMASTER &&
+        sServerFacade.GetDistance2d(bot, player) > sPlayerbotAIConfig.whisperDistance)
+        return false;
+
+    std::set<ObjectGuid>& alreadySeenPlayers = AI_VALUE(std::set<ObjectGuid>&, "already seen players");
+    uint32 now = (uint32)std::time(nullptr);
+    if (resetSeenPlayersAfterCooldown && now >= nextSaleOfferTime)
+    {
+        alreadySeenPlayers.clear();
+        resetSeenPlayersAfterCooldown = false;
+    }
+
+    return (!nextSaleOfferTime || now >= nextSaleOfferTime) &&
+        alreadySeenPlayers.find(newPlayer) == alreadySeenPlayers.end() &&
+        !AI_VALUE(std::list<Item*>, "items for sale").empty();
+}
+
+bool RpgSaleOfferAction::Execute(Event& event)
+{
+    ObjectGuid targetGuid = AI_VALUE(ObjectGuid, "new player nearby");
+    Player* player = dynamic_cast<Player*>(ai->GetWorldObject(targetGuid));
+    std::set<ObjectGuid>& alreadySeenPlayers = AI_VALUE(std::set<ObjectGuid>&, "already seen players");
+
+    uint32 now = (uint32)std::time(nullptr);
+    if (!player || !ai->IsSafe(player) || !player->IsWithinLOSInMap(bot) ||
+        (nextSaleOfferTime && now < nextSaleOfferTime) ||
+        !alreadySeenPlayers.insert(targetGuid).second)
+    {
+        rpg->AfterExecute(false, false, "rpg");
+        DoDelay();
+        return false;
+    }
+
+    if (alreadySeenPlayers.size() > 100)
+    {
+        std::set<ObjectGuid>::iterator oldest = alreadySeenPlayers.begin();
+        if (*oldest == targetGuid)
+            ++oldest;
+        if (oldest != alreadySeenPlayers.end())
+            alreadySeenPlayers.erase(oldest);
+    }
+
+    if (urand(0, 9) != 0)
+    {
+        rpg->AfterExecute();
+        DoDelay();
+        return true;
+    }
+
+    std::list<Item*> saleItems = AI_VALUE(std::list<Item*>, "items for sale");
+    std::vector<Item*> candidates(saleItems.begin(), saleItems.end());
+    if (candidates.empty())
+    {
+        rpg->AfterExecute();
+        DoDelay();
+        return true;
+    }
+
+    uint32 offerCount = std::min<uint32>(3, (uint32)candidates.size());
+    offerCount = urand(1, offerCount);
+
+    static char const* const saleOpeners[] =
+    {
+        "I'm selling",
+        "Got a few things for sale",
+        "I've got these available",
+        "Looking to sell",
+        "Need anything from these?",
+        "Would any of these be useful to you?",
+        "Interested in any of these?",
+        "Take a look at what I've got",
+        "I could part with these items",
+        "Trying to make some room in my bags",
+        "These are up for grabs",
+        "Need supplies? Here's what I've got",
+        "Anyone looking for something like this?",
+        "Can I interest you in any of these?",
+        "Here's what I'm selling"
+    };
+
+    std::ostringstream out;
+    uint32 openerCount = sizeof(saleOpeners) / sizeof(saleOpeners[0]);
+    out << saleOpeners[urand(0, openerCount - 1)];
+    for (uint32 i = 0; i < offerCount; ++i)
+    {
+        uint32 index = urand(0, (uint32)candidates.size() - 1);
+        Item* item = candidates[index];
+        uint32 price = ItemUsageValue::GetBotSellPrice(item->GetProto(), bot) * item->GetCount();
+
+        out << (i ? ", " : " ") << chat->formatItem(item) << " for " << chat->formatMoney(price);
+        candidates.erase(candidates.begin() + index);
+    }
+
+    if (!ai->TellPlayer(player, out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false))
+        alreadySeenPlayers.erase(targetGuid);
+    else
+    {
+        nextSaleOfferTime = now + urand(60, 300);
+        resetSeenPlayersAfterCooldown = true;
+    }
+
+    rpg->AfterExecute();
+    DoDelay();
+    return true;
 }
 
 bool RpgEnchantAction::Execute(Event& event)

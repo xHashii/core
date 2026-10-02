@@ -139,6 +139,8 @@ int32 MoveSplineInit::Launch()
 
     if ((unit.IsPlayer() && !unit.ToPlayer()->IsBot()) || unit.GetPossessorGuid().IsPlayer())
         unit.SetSplineDonePending(true);
+    else if (unit.IsPlayer())
+        unit.SetSplineDonePending(false);
 
     unit.m_movementInfo.ctime = 0;
     unit.m_movementInfo.SetMovementFlags((MovementFlags)moveFlags);

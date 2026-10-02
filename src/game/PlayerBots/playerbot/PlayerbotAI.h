@@ -17,6 +17,8 @@
 #include "Chat.h"
 #include "Group.h"
 #include <unordered_map>
+#include <deque>
+#include <map>
 
 class Player;
 class PlayerbotMgr;
@@ -394,6 +396,9 @@ public:
     void QueueAIPlayText(std::string text, bool generationCompleted = false, ObjectGuid owner = ObjectGuid());
     void QueueAIPlayPlayerMessage(uint32 msgType, ObjectGuid sender, ObjectGuid receiver, std::string message);
     std::string GetAIPlayContext() const { return aiPlayContext; }
+    time_t GetAIPlayLastPlayerMessageTime() const { return aiPlayLastPlayerMessageTime; }
+    const std::string& GetAIPlayLastChatLine() const { return aiPlayLastChatLine; }
+    time_t GetAIPlayLastChatTime() const { return aiPlayLastChatTime; }
     void HandleBotOutgoingPacket(const WorldPacket& packet);
     void ProcessBotOutgoingPackets();
     bool TryMinimalMove();
@@ -739,7 +744,13 @@ protected:
     time_t nextAIPlayGenerationTime = 0;
     bool aiPlayGenerationPending = false;
     std::string aiPlayContext;
+    time_t aiPlayLastPlayerMessageTime = 0;
+    std::string aiPlayLastChatLine;
+    time_t aiPlayLastChatTime = 0;
     std::queue<AIPlayQueuedMessage> aiPlayMessages;
+    time_t aiPlayLastObservation = 0;
+    std::map<std::string, std::string> aiPlayFacts;
+    std::deque<std::pair<time_t, std::string>> aiPlayEvents;
     static std::set<std::string> unsecuredCommands;
     bool allowActive[MAX_ACTIVITY_TYPE];
     time_t allowActiveCheckTimer[MAX_ACTIVITY_TYPE];
